@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Car, Mail, Lock, Loader2, LogIn } from "lucide-react";
@@ -11,7 +11,7 @@ const HOME: Record<string, string> = {
   dispatcher: "/dispatch",
 };
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const supabase = createClient();
@@ -111,11 +111,21 @@ export default function LoginPage() {
             {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (<><LogIn className="h-5 w-5" /> Sign In</>)}
           </button>
         </form>
-
-        <p className="mt-6 text-center text-xs text-gray-400">
-          Test: admin@taxi.test · dispatch@taxi.test — password <b>taxi1234</b>
-        </p>
       </motion.div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-white">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

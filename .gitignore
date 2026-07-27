@@ -36,6 +36,9 @@ yarn-error.log*
 # secrets — Supabase MCP access token
 .mcp.json
 
+# Claude Code local settings (may contain command history / keys — never commit)
+.claude/settings.local.json
+
 # vercel
 .vercel
 

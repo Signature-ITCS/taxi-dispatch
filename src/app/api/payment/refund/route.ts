@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Staff-only (admin or dispatcher): refund a card booking's Stripe payment. */
 export async function POST(req: Request) {
-  const stripe = getStripe();
+  const stripe = await getStripe();
   if (!stripe) return NextResponse.json({ ok: false, error: "payments_not_configured" });
 
   // Must be signed-in staff (admin or dispatcher)
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     data: { user },
   } = await supa.auth.getUser();
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" });
-  const { data: profile } = await supa.from("profiles").select("role").eq("id", user.id).single();
+  const { data: profile } = await supa.from("profiles").select("role, full_name").eq("id", user.id).single();
   if (profile?.role !== "admin" && profile?.role !== "dispatcher") {
     return NextResponse.json({ ok: false, error: "forbidden" });
   }
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const admin = createAdminClient();
   const { data: booking } = await admin
     .from("bookings")
-    .select("id, trip_group_id, stripe_payment_intent_id, payment_status")
+    .select("id, booking_number, trip_group_id, stripe_payment_intent_id, payment_status")
     .eq("id", booking_id)
     .single();
 
@@ -48,6 +48,14 @@ export async function POST(req: Request) {
     .from("payments")
     .update({ status: "refunded", refunded_at: new Date().toISOString() })
     .eq("stripe_payment_intent_id", booking.stripe_payment_intent_id);
+
+  await admin.from("activity_logs").insert({
+    actor_id: user.id,
+    actor_name: profile?.full_name ?? null,
+    actor_role: profile?.role ?? null,
+    action: "refund",
+    description: `Refunded card payment for ${booking.booking_number}`,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -278,7 +278,7 @@ function BookingDetailModal({
             <DetailRow
               icon={Route}
               label="Distance"
-              value={`${row.distance_km} km${row.duration_min != null ? ` · ~${row.duration_min} min` : ""}`}
+              value={`${row.distance_km} mi${row.duration_min != null ? ` · ~${row.duration_min} min` : ""}`}
             />
           )}
           <DetailRow

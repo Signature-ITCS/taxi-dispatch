@@ -6,8 +6,11 @@ import { getStripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveLegDistance, type LegInput } from "@/lib/googleRoute";
 import { isValidPhone } from "@/lib/format";
+import { getSessionProfile } from "@/lib/auth";
 import { sendEmail, emailEnabled } from "@/lib/email";
+import { sendSms, smsEnabled } from "@/lib/sms";
 import { customerConfirmationEmail, staffAlertEmail, type BookingEmailData } from "@/lib/emailTemplates";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 interface Leg extends LegInput {
   pickup_address: string;
@@ -27,6 +30,11 @@ interface BookResult {
 }
 
 export async function POST(req: Request) {
+  // Throttle: booking sends an SMS + emails to client-supplied addresses and hits
+  // Google/Stripe — cap per IP so it can't be scripted to bomb numbers or run up bills.
+  if (!rateLimit(`book:${clientIp(req)}`, 15, 60_000)) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
   const b = await req.json().catch(() => ({}));
 
   if (!b.name?.trim() || !b.whatsapp?.trim() || !b.category_id || !b.outbound) {
@@ -96,7 +104,7 @@ export async function POST(req: Request) {
   let paid = false;
   let receiptUrl: string | null = null;
   if (b.payment_method === "card" && b.payment_intent_id) {
-    const stripe = getStripe();
+    const stripe = await getStripe();
     if (stripe) {
       try {
         const pi = await stripe.paymentIntents.retrieve(b.payment_intent_id, {
@@ -137,9 +145,83 @@ export async function POST(req: Request) {
     }
   }
 
+  // Staff-only manual price override (discount / rush pricing). Verified against
+  // the logged-in staff session, so a public customer can NEVER set their own price.
+  let overrideFare: number | null = null;
+  const requestedFare = Number(b.custom_fare);
+  if (b.custom_fare != null && Number.isFinite(requestedFare) && requestedFare >= 0 && outbound.booking_id) {
+    const me = await getSessionProfile();
+    if (me && (me.role === "admin" || me.role === "dispatcher")) {
+      overrideFare = requestedFare;
+      const admin = createAdminClient();
+      if (ret?.ok && ret.booking_id) {
+        // The custom price is the WHOLE-TRIP total. Split it across both legs so the
+        // per-leg fares still sum to it (cash collection, settlement, analytics all
+        // read per-leg estimated_fare). Split in proportion to the original leg fares.
+        const outOrig = outbound.estimated_fare ?? 0;
+        const retOrig = ret.estimated_fare ?? 0;
+        const sumOrig = outOrig + retOrig;
+        const outShare =
+          sumOrig > 0
+            ? Math.round(overrideFare * (outOrig / sumOrig) * 100) / 100
+            : Math.round((overrideFare / 2) * 100) / 100;
+        const retShare = Math.round((overrideFare - outShare) * 100) / 100;
+        await admin
+          .from("bookings")
+          .update({
+            estimated_fare: outShare,
+            fare_breakdown: { total: outShare, custom: true, custom_trip_total: overrideFare, note: "Custom price set by staff (outbound share)" },
+          })
+          .eq("id", outbound.booking_id);
+        await admin
+          .from("bookings")
+          .update({
+            estimated_fare: retShare,
+            fare_breakdown: { total: retShare, custom: true, custom_trip_total: overrideFare, note: "Custom price set by staff (return share)" },
+          })
+          .eq("id", ret.booking_id);
+      } else {
+        await admin
+          .from("bookings")
+          .update({
+            estimated_fare: overrideFare,
+            fare_breakdown: { total: overrideFare, custom: true, note: "Custom price set by staff" },
+          })
+          .eq("id", outbound.booking_id);
+      }
+    }
+  }
+
+  // SMS confirmation to the customer's phone (best-effort, independent of email)
+  if ((await smsEnabled()) && b.whatsapp) {
+    try {
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+      const out = b.outbound as Leg;
+      const totalFare = overrideFare ?? (outbound.estimated_fare ?? 0) + (ret?.ok ? ret.estimated_fare ?? 0 : 0);
+      const when = out.scheduled_at
+        ? new Date(out.scheduled_at).toLocaleString("en-GB", {
+            timeZone: "Europe/London",
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "ASAP";
+      const site = outbound.website || "Your taxi";
+      const text =
+        `${site}: Booking confirmed. Ref ${outbound.booking_number}. ` +
+        `${out.pickup_address} to ${out.dropoff_address}. ${when}. ` +
+        `Total £${totalFare.toFixed(2)} (${b.payment_method ?? "cash"}). ` +
+        `Track your ride: ${origin}/track/${outbound.booking_number}`;
+      await sendSms(b.whatsapp, text);
+    } catch {
+      /* SMS is best-effort — booking already succeeded */
+    }
+  }
+
   // Confirmation emails — customer + staff (dispatch/admin). Never block or fail
   // the booking on an email error; skips entirely when email isn't configured.
-  if (emailEnabled()) {
+  if (await emailEnabled()) {
     try {
       const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
       const admin = createAdminClient();
@@ -152,7 +234,7 @@ export async function POST(req: Request) {
         .map((s) => s.email)
         .filter((e): e is string => !!e);
 
-      const totalFare = (outbound.estimated_fare ?? 0) + (ret?.ok ? ret.estimated_fare ?? 0 : 0);
+      const totalFare = overrideFare ?? ((outbound.estimated_fare ?? 0) + (ret?.ok ? ret.estimated_fare ?? 0 : 0));
       const data: BookingEmailData = {
         bookingNumber: outbound.booking_number ?? "",
         customerName: b.name,
@@ -184,6 +266,18 @@ export async function POST(req: Request) {
     } catch {
       /* email is best-effort — booking already succeeded */
     }
+  }
+
+  // Activity log (best-effort — never break the booking)
+  try {
+    const logAdmin = createAdminClient();
+    await logAdmin.from("activity_logs").insert({
+      action: "booking_created",
+      description: `New booking ${outbound.booking_number} — ${b.name}`,
+      metadata: { fare: overrideFare ?? outbound.estimated_fare ?? null, payment: b.payment_method ?? "cash" },
+    });
+  } catch {
+    /* ignore logging errors */
   }
 
   return NextResponse.json({ ok: true, outbound, return: ret, paid, receipt_url: receiptUrl });

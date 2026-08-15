@@ -135,6 +135,8 @@ export default function BookingWidget({
   const [notes, setNotes] = useState("");
   const [childSeatOn, setChildSeatOn] = useState(false);
   const [childSeatPrice, setChildSeatPrice] = useState(0);
+  // Staff-only manual price override (discount / rush pricing). Ignored for public customers.
+  const [customPrice, setCustomPrice] = useState("");
   const [passengers, setPassengers] = useState(1);
   const [suitcases, setSuitcases] = useState(0);
   const [handLuggage, setHandLuggage] = useState(0);
@@ -282,6 +284,7 @@ export default function BookingWidget({
     outbound: legPayload(outbound, outAt),
     return: returnEnabled ? legPayload(ret, retAt) : null,
     ...(paymentIntentId ? { payment_intent_id: paymentIntentId } : {}),
+    ...(customFare != null ? { custom_fare: customFare } : {}),
   });
 
   // Card: create a PaymentIntent, then reveal the Stripe card form
@@ -341,7 +344,7 @@ export default function BookingWidget({
       setResult({
         outbound: data.outbound.booking_number,
         ret: data.return?.booking_number ?? null,
-        fare: grandTotal || data.outbound.estimated_fare,
+        fare: finalTotal || data.outbound.estimated_fare,
         paid: !!data.paid,
         receiptUrl: data.receipt_url ?? null,
       });
@@ -354,6 +357,12 @@ export default function BookingWidget({
   const selectedQuote = quotes.find((q) => q.category_id === selected);
   const childSeatExtra = childSeatOn && childSeatPrice > 0 ? childSeatPrice : 0;
   const grandTotal = (selectedQuote?.total ?? 0) + childSeatExtra;
+  // Custom price only applies in staff/manual mode when a valid amount is entered.
+  const customFare =
+    manual && customPrice.trim() !== "" && Number.isFinite(Number(customPrice)) && Number(customPrice) >= 0
+      ? Number(customPrice)
+      : null;
+  const finalTotal = customFare ?? grandTotal;
 
   // Keep passenger/luggage counts within the selected vehicle's capacity
   useEffect(() => {
@@ -786,6 +795,32 @@ export default function BookingWidget({
                   </div>
                 )}
 
+                {/* Staff-only manual price override (discount / rush pricing) */}
+                {manual && (
+                  <div className="rounded-xl border-2 border-dashed border-gray-200 p-3">
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Custom price (staff only)
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">£</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={customPrice}
+                        onChange={(e) => setCustomPrice(e.target.value)}
+                        placeholder={`Auto: ${grandTotal.toFixed(2)}`}
+                        className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-7 pr-4 text-[15px] outline-none focus:border-brand-400 focus:ring-4 focus:ring-brand-500/10"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {customFare != null
+                        ? `Using custom price: ${money(customFare)} (overrides the calculated fare)`
+                        : "Leave empty to use the calculated price. Set a lower price for a discount, or higher for rush hours."}
+                    </p>
+                  </div>
+                )}
+
                 {error && <p className="text-sm text-red-600">{error}</p>}
 
                 {payment === "card" && !manual && cardSecret ? (
@@ -1015,7 +1050,7 @@ function DistanceChip({ km, min }: { km: number; min: number | null }) {
   return (
     <div className="flex items-center gap-4 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
       <span className="flex items-center gap-1.5">
-        <Route className="h-4 w-4 text-brand-500" /> {km} km
+        <Route className="h-4 w-4 text-brand-500" /> {km} mi
       </span>
       {min != null && (
         <span className="flex items-center gap-1.5">

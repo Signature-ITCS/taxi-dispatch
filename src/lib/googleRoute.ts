@@ -26,7 +26,11 @@ export interface LegInput {
 const hasCoord = (p?: Pt | null): p is { lat: number; lng: number } =>
   !!p && typeof p.lat === "number" && typeof p.lng === "number";
 
-/** Driving distance (km) + duration (min) through optional waypoints. Null on failure. */
+/**
+ * Driving distance (MILES) + duration (min) through optional waypoints. Null on failure.
+ * NOTE: the app works in miles (UK). The `km`/`distance_km` field names are kept
+ * for compatibility but hold MILES.
+ */
 export async function googleRouteDistance(
   origin: Pt,
   destination: Pt,
@@ -49,7 +53,7 @@ export async function googleRouteDistance(
     if (!legs.length) return null;
     const meters = legs.reduce((s, l) => s + (l.distance?.value ?? 0), 0);
     const secs = legs.reduce((s, l) => s + (l.duration?.value ?? 0), 0);
-    return { km: Number((meters / 1000).toFixed(2)), min: Math.round(secs / 60) };
+    return { km: Number((meters / 1609.344).toFixed(2)), min: Math.round(secs / 60) };
   } catch {
     return null;
   }

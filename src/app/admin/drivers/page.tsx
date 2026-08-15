@@ -25,6 +25,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import { cn, dateTime, money } from "@/lib/format";
+import { logActivity } from "@/lib/activity";
 import type { Driver } from "@/lib/types";
 
 interface ReviewRow {
@@ -106,6 +107,7 @@ export default function DriversPage() {
     if (!confirm(`Settle ${money(held.amount)} cash from ${d.full_name}? This clears their balance.`)) return;
     setSettling(d.id);
     await supabase.rpc("settle_driver_cash", { p_driver_id: d.id });
+    await logActivity(supabase, "cash_settled", `Settled ${money(held.amount)} cash from ${d.full_name}`);
     setSettling(null);
     load();
   };
@@ -366,6 +368,7 @@ function DeleteConfirm({
       setError("Could not delete this driver. Please try again.");
       return;
     }
+    await logActivity(supabase, "driver_removed", `Removed driver ${driver.full_name}`);
     onDone();
     onClose();
   };
@@ -500,6 +503,11 @@ function DriverModal({
       }
     }
 
+    await logActivity(
+      supabase,
+      editing ? "driver_updated" : "driver_added",
+      `${editing ? "Updated" : "Added"} driver ${form.full_name.trim()}`
+    );
     setSaving(false);
     onDone();
     onClose();

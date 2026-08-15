@@ -3,6 +3,7 @@ import { callRpc } from "@/lib/supabaseRest";
 import { getWebsiteKey } from "@/lib/getWebsiteKey";
 import { getStripe } from "@/lib/stripe";
 import { resolveLegDistance, type LegInput } from "@/lib/googleRoute";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 interface Leg extends LegInput {
   route_text?: string;
@@ -36,7 +37,11 @@ async function legTotal(key: string, leg: Leg, categoryId: string): Promise<{ to
 
 /** Creates a Stripe PaymentIntent for the full server-computed fare of a card booking. */
 export async function POST(req: Request) {
-  const stripe = getStripe();
+  // Throttle: each call hits Google Directions and creates a live Stripe intent.
+  if (!rateLimit(`intent:${clientIp(req)}`, 20, 60_000)) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
+  const stripe = await getStripe();
   if (!stripe) return NextResponse.json({ ok: false, error: "payments_not_configured" });
 
   const b = await req.json().catch(() => ({}));

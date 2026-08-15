@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Plus, Globe, Copy, Check, X, ExternalLink, Code2 } from "lucide-react";
+import { Loader2, Plus, Globe, Copy, Check, X, ExternalLink, Code2, Trash2, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import { cn } from "@/lib/format";
+import { logActivity } from "@/lib/activity";
 import type { Website } from "@/lib/types";
 
 export default function WebsitesPage() {
@@ -17,6 +18,8 @@ export default function WebsitesPage() {
   const [form, setForm] = useState({ name: "", slug: "", domain: "" });
   const [saving, setSaving] = useState(false);
   const [origin, setOrigin] = useState("");
+  const [toDelete, setToDelete] = useState<Website | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -43,6 +46,7 @@ export default function WebsitesPage() {
 
   const toggle = async (s: Website) => {
     await supabase.from("websites").update({ is_active: !s.is_active }).eq("id", s.id);
+    await logActivity(supabase, "widget_toggled", `${s.is_active ? "Disabled" : "Enabled"} widget: ${s.name}`);
     load();
   };
 
@@ -54,23 +58,36 @@ export default function WebsitesPage() {
       slug: form.slug.toLowerCase().replace(/\s+/g, "-"),
       domain: form.domain || null,
     });
+    await logActivity(supabase, "widget_added", `Added widget: ${form.name}`);
     setSaving(false);
     setForm({ name: "", slug: "", domain: "" });
     setShowAdd(false);
     load();
   };
 
+  const del = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    // Unlink past bookings from this source, then remove the widget.
+    await supabase.from("bookings").update({ website_id: null }).eq("website_id", toDelete.id);
+    await supabase.from("websites").delete().eq("id", toDelete.id);
+    await logActivity(supabase, "widget_removed", `Removed widget: ${toDelete.name}`);
+    setDeleting(false);
+    setToDelete(null);
+    load();
+  };
+
   return (
     <div>
       <PageHeader
-        title="Websites"
-        subtitle="Booking sources that embed the widget"
+        title="Widgets"
+        subtitle="Embeddable booking widgets — one per website or partner"
         action={
           <button
             onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
           >
-            <Plus className="h-4 w-4" /> Add Website
+            <Plus className="h-4 w-4" /> Add Widget
           </button>
         }
       />
@@ -99,12 +116,25 @@ export default function WebsitesPage() {
                     <p className="text-xs text-gray-400">{s.domain || s.slug}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => toggle(s)}
-                  className={cn("relative h-6 w-11 rounded-full transition-colors", s.is_active ? "bg-emerald-500" : "bg-gray-200")}
-                >
-                  <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", s.is_active ? "left-[22px]" : "left-0.5")} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggle(s)}
+                    title={s.is_active ? "Turn off" : "Turn on"}
+                    className={cn("relative h-6 w-11 rounded-full transition-colors", s.is_active ? "bg-emerald-500" : "bg-gray-200")}
+                  >
+                    <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", s.is_active ? "left-[22px]" : "left-0.5")} />
+                  </button>
+                  {s.slug !== "main" && (
+                    <button
+                      onClick={() => setToDelete(s)}
+                      title="Delete widget"
+                      aria-label="Delete widget"
+                      className="rounded-lg p-1.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
               <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">API key</p>
               <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
@@ -154,7 +184,7 @@ export default function WebsitesPage() {
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
           >
-            <h3 className="mb-4 font-display text-lg font-bold text-ink-950">Add Website</h3>
+            <h3 className="mb-4 font-display text-lg font-bold text-ink-950">Add Widget</h3>
             <div className="space-y-3">
               <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Website name" className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-400" />
               <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="Slug (e.g. citycabs)" className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-400" />
@@ -166,6 +196,38 @@ export default function WebsitesPage() {
               </button>
               <button onClick={() => setShowAdd(false)} className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-200">
                 <X className="h-4 w-4" />
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {toDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setToDelete(null)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <h3 className="font-display text-lg font-bold text-ink-950">Delete “{toDelete.name}”?</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              This removes the widget and its embed code. Past bookings are kept but no longer linked to this
+              source. This can&apos;t be undone.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={del}
+                disabled={deleting}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:bg-gray-300"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : (<><Trash2 className="h-4 w-4" /> Delete</>)}
+              </button>
+              <button onClick={() => setToDelete(null)} className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-200">
+                Cancel
               </button>
             </div>
           </motion.div>

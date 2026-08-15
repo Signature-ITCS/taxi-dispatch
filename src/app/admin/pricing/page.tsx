@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import { carIcon } from "@/components/booking/CarIcon";
 import { cn, money } from "@/lib/format";
+import { logActivity } from "@/lib/activity";
 import type { VehicleCategory, PricingRule } from "@/lib/types";
 
 export default function PricingPage() {
@@ -37,6 +38,7 @@ export default function PricingPage() {
     await supabase
       .from("app_settings")
       .upsert({ key: "child_seat_price", value: { amount: childSeatPrice } });
+    await logActivity(supabase, "pricing_updated", `Updated child seat price to ${money(childSeatPrice)}`);
     setSavingCsp(false);
     setSavedCsp(true);
     setTimeout(() => setSavedCsp(false), 1500);
@@ -63,6 +65,7 @@ export default function PricingPage() {
         minimum_fare: c.minimum_fare,
       })
       .eq("id", c.id);
+    await logActivity(supabase, "pricing_updated", `Updated pricing for ${c.name}`);
     setSavingId(null);
     setSavedId(c.id);
     setTimeout(() => setSavedId(null), 1500);
@@ -79,7 +82,7 @@ export default function PricingPage() {
 
   return (
     <div>
-      <PageHeader title="Pricing" subtitle="Fares, per-km rates and extra charges" />
+      <PageHeader title="Pricing" subtitle="Fares, per-mile rates and extra charges" />
 
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -121,7 +124,7 @@ export default function PricingPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <NumField label="Base fare" value={c.base_fare} onChange={(v) => editCat(c.id, "base_fare", v)} />
-                      <NumField label="Per km" value={c.price_per_km} onChange={(v) => editCat(c.id, "price_per_km", v)} />
+                      <NumField label="Per mile" value={c.price_per_km} onChange={(v) => editCat(c.id, "price_per_km", v)} />
                       <NumField label="Per min" value={c.price_per_minute} onChange={(v) => editCat(c.id, "price_per_minute", v)} />
                       <NumField label="Min fare" value={c.minimum_fare} onChange={(v) => editCat(c.id, "minimum_fare", v)} />
                     </div>
@@ -352,6 +355,11 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
         }))
       );
     }
+    await logActivity(
+      supabase,
+      "pricing_bands_updated",
+      `Updated distance bands for ${cats.find((c) => c.id === id)?.name ?? "a vehicle"}`
+    );
     setSavingCat(null);
     setSavedCat(id);
     setTimeout(() => setSavedCat(null), 1500);
@@ -367,8 +375,8 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
         </h2>
       </div>
       <p className="mb-3 max-w-2xl text-xs text-gray-400">
-        Optional. Set per-km rates that taper as the trip gets longer — each band charges only the
-        distance inside it (like tax brackets). Leave empty to use the flat “Per km” rate above. Keep
+        Optional. Set per-mile rates that taper as the trip gets longer — each band charges only the
+        distance inside it (like tax brackets). Leave empty to use the flat “Per mile” rate above. Keep
         bands contiguous (each “From” = previous “To”) and make the last “To” large (e.g. 1000).
       </p>
 
@@ -387,14 +395,14 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
                 <p className="mb-2 font-display font-bold text-ink-950">{c.name}</p>
                 {rows.length === 0 ? (
                   <p className="mb-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-400">
-                    No bands — using flat £{Number(c.price_per_km).toFixed(2)}/km.
+                    No bands — using flat £{Number(c.price_per_km).toFixed(2)}/mi.
                   </p>
                 ) : (
                   <div className="mb-2 space-y-1.5">
                     <div className="grid grid-cols-[1fr_1fr_1fr_28px] gap-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                      <span>From km</span>
-                      <span>To km</span>
-                      <span>£/km</span>
+                      <span>From mi</span>
+                      <span>To mi</span>
+                      <span>£/mi</span>
                       <span />
                     </div>
                     {rows.map((r, i) => (
@@ -491,7 +499,7 @@ function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-400">Distance (km)</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-400">Distance (mi)</span>
           <input
             type="number"
             min={0}

@@ -10,9 +10,12 @@ import {
   Tags,
   CarFront,
   Users,
-  Globe,
+  Code2,
   ShieldCheck,
   Radio,
+  Headset,
+  ScrollText,
+  Settings,
 } from "lucide-react";
 import SignOutButton from "@/components/dashboard/SignOutButton";
 import { cn } from "@/lib/format";
@@ -24,8 +27,11 @@ const NAV = [
   { href: "/admin/bookings", label: "Bookings", icon: ClipboardList },
   { href: "/admin/pricing", label: "Pricing", icon: Tags },
   { href: "/admin/drivers", label: "Drivers", icon: CarFront },
+  { href: "/admin/dispatchers", label: "Dispatchers", icon: Headset },
   { href: "/admin/customers", label: "Customers", icon: Users },
-  { href: "/admin/websites", label: "Websites", icon: Globe },
+  { href: "/admin/websites", label: "Widgets", icon: Code2 },
+  { href: "/admin/logs", label: "Activity Logs", icon: ScrollText },
+  { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminShell({

@@ -1,19 +1,16 @@
 import Stripe from "stripe";
 
 /**
- * Server-only Stripe client. Never import into a client component.
- * Requires STRIPE_SECRET_KEY in the environment.
- * Returns null when the key is missing so callers can fail gracefully
- * (card payments disabled) instead of crashing the whole app.
+ * Server-only Stripe client. The secret key comes from STRIPE_SECRET_KEY in the
+ * environment (kept in .env / Vercel — never in the DB or admin UI).
+ * Returns null when no key is configured (card payments disabled).
+ * Never import into a client component.
  */
 let cached: Stripe | null = null;
 
-export function getStripe(): Stripe | null {
+export async function getStripe(): Promise<Stripe | null> {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
   if (!cached) cached = new Stripe(key);
   return cached;
 }
-
-/** Whether card payments are configured on this deployment. */
-export const stripeEnabled = () => Boolean(process.env.STRIPE_SECRET_KEY);

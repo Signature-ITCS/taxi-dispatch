@@ -70,7 +70,7 @@ function detailsTable(d: BookingEmailData): string {
       ${d.returnBookingNumber ? row("Other leg", `<span style="font-family:monospace;">${escapeHtml(d.returnBookingNumber)}</span>`) : ""}
       ${row("Route", routeVal)}
       ${d.carName ? row("Vehicle", escapeHtml(d.carName)) : ""}
-      ${d.distanceKm != null ? row("Distance", `${d.distanceKm} km`) : ""}
+      ${d.distanceKm != null ? row("Distance", `${d.distanceKm} mi`) : ""}
       ${row("When", whenLabel(d.scheduledAt))}
       ${row("Passenger", `${escapeHtml(d.customerName)} · ${escapeHtml(d.customerWhatsapp)}`)}
       ${row("Payment", payLabel(d))}

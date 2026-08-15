@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const { place_id } = await req.json().catch(() => ({ place_id: "" }));
   if (!place_id) return NextResponse.json({ ok: false });
 
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place_id}&fields=formatted_address,geometry&key=${KEY}`;
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(place_id)}&fields=formatted_address,geometry&key=${KEY}`;
   try {
     const res = await fetch(url, { cache: "no-store" });
     const data = await res.json();

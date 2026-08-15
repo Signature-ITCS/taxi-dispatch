@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { callRpc } from "@/lib/supabaseRest";
 import { getWebsiteKey } from "@/lib/getWebsiteKey";
 import { resolveLegDistance, type LegInput } from "@/lib/googleRoute";
+import { rateLimit, clientIp } from "@/lib/rateLimit";
 
 interface QuoteLeg extends LegInput {
   route_text?: string;
@@ -40,6 +41,10 @@ async function legQuotes(
 }
 
 export async function POST(req: Request) {
+  // Each quote triggers up to 2 Google Directions lookups — throttle to blunt cost abuse.
+  if (!rateLimit(`quote:${clientIp(req)}`, 30, 60_000)) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
   const b = await req.json().catch(() => ({}));
   const key = await getWebsiteKey(b.site ?? "main");
   if (!key) return NextResponse.json({ ok: false, error: "invalid_website" });

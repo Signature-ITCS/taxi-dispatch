@@ -39,5 +39,13 @@ export async function POST(req: Request) {
   const uid = data.user.id;
   await admin.from("profiles").insert({ id: uid, full_name, email, phone: phone ?? null, role });
 
+  await admin.from("activity_logs").insert({
+    actor_id: me.id,
+    actor_name: me.full_name,
+    actor_role: me.role,
+    action: "dispatcher_added",
+    description: `Added ${role} account: ${email}`,
+  });
+
   return NextResponse.json({ ok: true });
 }

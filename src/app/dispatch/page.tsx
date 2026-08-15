@@ -220,7 +220,7 @@ export default function DispatchPage() {
       ? "🕐 Scheduled: " + new Date(job.scheduled_at).toLocaleString()
       : "⏱️ ASAP";
     const vias = (job.via_points ?? []).map((v) => v.address).filter(Boolean);
-    const dist = job.distance_km ? `📏 ${job.distance_km} km` + (job.duration_min ? ` · ~${job.duration_min} min` : "") + "\n" : "";
+    const dist = job.distance_km ? `📏 ${job.distance_km} mi` + (job.duration_min ? ` · ~${job.duration_min} min` : "") + "\n" : "";
     const msg =
       `🚕 ${job.is_return ? "Return Ride" : "New Ride"} — ${job.booking_number}\n` +
       `🚗 Car: ${job.category?.name ?? "—"}\n` +
@@ -485,7 +485,7 @@ export default function DispatchPage() {
                     </p>
                     {selected.distance_km != null && (
                       <p className="flex items-center gap-1.5 text-gray-400">
-                        <Route className="h-3.5 w-3.5 shrink-0" /> {selected.distance_km} km
+                        <Route className="h-3.5 w-3.5 shrink-0" /> {selected.distance_km} mi
                         {selected.duration_min != null ? ` · ~${selected.duration_min} min` : ""}
                       </p>
                     )}

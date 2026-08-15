@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Car, Mail, Lock, Loader2, LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { logActivity } from "@/lib/activity";
 
 const HOME: Record<string, string> = {
   admin: "/admin",
@@ -46,6 +47,8 @@ function LoginForm() {
       await supabase.auth.signOut();
       return;
     }
+
+    await logActivity(supabase, "login", "Signed in to the dashboard");
 
     const next = params.get("next") || HOME[profile.role] || "/";
     router.push(next);

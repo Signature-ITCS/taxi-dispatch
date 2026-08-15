@@ -1,21 +1,18 @@
 /**
- * Email sender via the Resend REST API (no SDK dependency — plain fetch).
+ * Email sender via the Resend REST API (no SDK — plain fetch).
  *
- * Gracefully no-ops when RESEND_API_KEY is not set, so the app works fine
- * before email is configured (mirrors the Stripe helper). Once the key is
- * added to .env.local, booking emails start sending automatically.
- *
- * Setup:
- *   1. Create a free account at https://resend.com and copy an API key.
- *   2. Put it in .env.local as RESEND_API_KEY=...
- *   3. (optional) Verify your domain in Resend, then set
- *      EMAIL_FROM="TaxiFlow <bookings@your-domain.uk>".
- *      Until then it sends from Resend's shared test address.
+ * The API key comes from RESEND_API_KEY in the environment (kept in .env /
+ * Vercel — never in the DB or admin UI). The "from" address is admin-editable
+ * config (app_settings), falling back to EMAIL_FROM. Gracefully no-ops when no
+ * key is configured, so the app works before email is set up.
  */
-const RESEND_KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.EMAIL_FROM || "TaxiFlow <onboarding@resend.dev>";
+import { getConfigValue } from "./settings";
 
-export const emailEnabled = () => Boolean(RESEND_KEY);
+const DEFAULT_FROM = "TaxiFlow <onboarding@resend.dev>";
+
+export async function emailEnabled(): Promise<boolean> {
+  return Boolean(process.env.RESEND_API_KEY);
+}
 
 export async function sendEmail(opts: {
   to: string | string[];
@@ -23,18 +20,18 @@ export async function sendEmail(opts: {
   html: string;
   replyTo?: string;
 }): Promise<boolean> {
-  if (!RESEND_KEY) return false; // not configured yet — skip silently
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return false;
   const to = (Array.isArray(opts.to) ? opts.to : [opts.to]).filter(Boolean);
   if (to.length === 0) return false;
+  const from = (await getConfigValue("notifications", "email_from", process.env.EMAIL_FROM)) || DEFAULT_FROM;
+
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: FROM,
+        from,
         to,
         subject: opts.subject,
         html: opts.html,

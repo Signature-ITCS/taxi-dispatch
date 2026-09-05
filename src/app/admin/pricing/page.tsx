@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Save, Plus, Trash2, Check, X, Percent, PoundSterling, Users, Luggage, Backpack, Baby, Layers, Calculator } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, Check, X, Percent, PoundSterling, Users, Luggage, Backpack, Baby, Layers, Calculator, AlertTriangle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import { carIcon } from "@/components/booking/CarIcon";
@@ -51,6 +51,9 @@ export default function PricingPage() {
   const editCat = (id: string, field: keyof VehicleCategory, value: number) =>
     setCats((cs) => cs.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
 
+  // Fare = base fare + distance bands + extra charges. The old flat per-mile,
+  // per-minute and minimum-fare columns are no longer priced by estimate_fare,
+  // so they are neither shown nor written here.
   const saveCat = async (c: VehicleCategory) => {
     setSavingId(c.id);
     await supabase
@@ -60,9 +63,6 @@ export default function PricingPage() {
         suitcases: c.suitcases,
         hand_bags: c.hand_bags,
         base_fare: c.base_fare,
-        price_per_km: c.price_per_km,
-        price_per_minute: c.price_per_minute,
-        minimum_fare: c.minimum_fare,
       })
       .eq("id", c.id);
     await logActivity(supabase, "pricing_updated", `Updated pricing for ${c.name}`);
@@ -82,7 +82,7 @@ export default function PricingPage() {
 
   return (
     <div>
-      <PageHeader title="Pricing" subtitle="Fares, per-mile rates and extra charges" />
+      <PageHeader title="Pricing" subtitle="Fare = base fare + distance bands + extra charges" />
 
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -122,11 +122,11 @@ export default function PricingPage() {
                       <IntField icon={Luggage} label="Suitcases" value={c.suitcases} onChange={(v) => editCat(c.id, "suitcases", v)} />
                       <IntField icon={Backpack} label="Hand bags" value={c.hand_bags} onChange={(v) => editCat(c.id, "hand_bags", v)} />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 items-end gap-3">
                       <NumField label="Base fare" value={c.base_fare} onChange={(v) => editCat(c.id, "base_fare", v)} />
-                      <NumField label="Per mile" value={c.price_per_km} onChange={(v) => editCat(c.id, "price_per_km", v)} />
-                      <NumField label="Per min" value={c.price_per_minute} onChange={(v) => editCat(c.id, "price_per_minute", v)} />
-                      <NumField label="Min fare" value={c.minimum_fare} onChange={(v) => editCat(c.id, "minimum_fare", v)} />
+                      <p className="pb-2 text-[11px] leading-snug text-gray-400">
+                        Added once per trip. Distance is priced by the bands below.
+                      </p>
                     </div>
                     <button
                       onClick={() => saveCat(c)}
@@ -340,9 +340,32 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
   const removeRow = (id: string, i: number) =>
     setRows(id, rowsFor(id).filter((_, idx) => idx !== i));
 
+  // Distance inside a gap between bands (or before the first band) is NOT
+  // charged, so warn before saving a band set that would leave holes.
+  const bandProblems = (rows: Band[]): string[] => {
+    const issues: string[] = [];
+    const sorted = [...rows].sort((a, b) => a.from_km - b.from_km);
+    if (sorted.length && sorted[0].from_km !== 0) issues.push(`first band starts at ${sorted[0].from_km} mi, not 0`);
+    sorted.forEach((r, i) => {
+      if (r.to_km <= r.from_km) issues.push(`"${r.from_km} → ${r.to_km}" has To ≤ From`);
+      if (i > 0 && r.from_km !== sorted[i - 1].to_km)
+        issues.push(`gap/overlap between ${sorted[i - 1].to_km} and ${r.from_km} mi`);
+    });
+    if (sorted.length && sorted[sorted.length - 1].to_km < 500)
+      issues.push(`last band ends at ${sorted[sorted.length - 1].to_km} mi — longer trips won't be charged beyond it`);
+    return issues;
+  };
+
   const saveCat = async (id: string) => {
-    setSavingCat(id);
     const rows = rowsFor(id);
+    const name = cats.find((c) => c.id === id)?.name ?? "this vehicle";
+    if (rows.length === 0) {
+      if (!confirm(`${name} has NO distance bands. Customers would only pay the base fare. Save anyway?`)) return;
+    } else {
+      const issues = bandProblems(rows);
+      if (issues.length && !confirm(`Check the bands for ${name}:\n• ${issues.join("\n• ")}\n\nSave anyway?`)) return;
+    }
+    setSavingCat(id);
     await supabase.from("pricing_bands").delete().eq("category_id", id);
     if (rows.length) {
       await supabase.from("pricing_bands").insert(
@@ -371,13 +394,14 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
       <div className="mb-1 flex items-center gap-2">
         <Layers className="h-4 w-4 text-emerald-600" />
         <h2 className="font-display text-sm font-bold uppercase tracking-wide text-gray-400">
-          Distance rate bands (tapered)
+          Distance rate bands (per mile)
         </h2>
       </div>
       <p className="mb-3 max-w-2xl text-xs text-gray-400">
-        Optional. Set per-mile rates that taper as the trip gets longer — each band charges only the
-        distance inside it (like tax brackets). Leave empty to use the flat “Per mile” rate above. Keep
-        bands contiguous (each “From” = previous “To”) and make the last “To” large (e.g. 1000).
+        This is the only place distance is priced. Each band charges just the miles inside it (like tax
+        brackets), so rates taper as the trip gets longer. Keep bands contiguous (each “From” = previous
+        “To”) starting at 0, and make the last “To” large (e.g. 1000). Airport / night charges and the
+        child seat are added on top.
       </p>
 
       <FareCalculator cats={cats} />
@@ -394,8 +418,9 @@ function DistancePricing({ cats }: { cats: VehicleCategory[] }) {
               <div key={c.id} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                 <p className="mb-2 font-display font-bold text-ink-950">{c.name}</p>
                 {rows.length === 0 ? (
-                  <p className="mb-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-400">
-                    No bands — using flat £{Number(c.price_per_km).toFixed(2)}/mi.
+                  <p className="mb-2 flex items-start gap-1.5 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    No bands — distance is NOT charged. Customers pay only the base fare (£{Number(c.base_fare).toFixed(2)}).
                   </p>
                 ) : (
                   <div className="mb-2 space-y-1.5">
@@ -470,10 +495,10 @@ function BandInput({ value, onChange, step = 0.1 }: { value: number; onChange: (
 function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
   const supabase = createClient();
   const [km, setKm] = useState("");
-  const [min, setMin] = useState("");
-  const [results, setResults] = useState<{ name: string; total: number }[] | null>(null);
+  const [results, setResults] = useState<{ name: string; base: number; dist: number; total: number }[] | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Daytime, no airport keyword → shows base + bands only (extra charges are situational).
   const calc = async () => {
     setBusy(true);
     const out = await Promise.all(
@@ -481,9 +506,18 @@ function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
         const { data } = await supabase.rpc("estimate_fare", {
           p_category_id: c.id,
           p_distance_km: Number(km) || 0,
-          p_duration_min: Number(min) || 0,
+          p_duration_min: 0,
+          p_pickup: "",
+          p_dropoff: "",
+          p_at: new Date(new Date().setHours(12, 0, 0, 0)).toISOString(),
         });
-        return { name: c.name, total: Number((data as { total?: number } | null)?.total ?? 0) };
+        const d = data as { base_fare?: number; distance_cost?: number; total?: number } | null;
+        return {
+          name: c.name,
+          base: Number(d?.base_fare ?? 0),
+          dist: Number(d?.distance_cost ?? 0),
+          total: Number(d?.total ?? 0),
+        };
       })
     );
     setResults(out);
@@ -495,7 +529,7 @@ function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
       <div className="mb-3 flex items-center gap-2">
         <Calculator className="h-4 w-4 text-emerald-600" />
         <p className="text-sm font-bold text-ink-950">Price calculator</p>
-        <span className="text-xs text-gray-400">Preview the fare for a distance</span>
+        <span className="text-xs text-gray-400">Base fare + bands for a distance (daytime, no airport)</span>
       </div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block">
@@ -506,20 +540,9 @@ function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
             step="0.1"
             value={km}
             onChange={(e) => setKm(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && km && calc()}
             placeholder="e.g. 12"
             className="w-28 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-400">Minutes (opt.)</span>
-          <input
-            type="number"
-            min={0}
-            step="1"
-            value={min}
-            onChange={(e) => setMin(e.target.value)}
-            placeholder="0"
-            className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400"
           />
         </label>
         <button
@@ -533,9 +556,16 @@ function FareCalculator({ cats }: { cats: VehicleCategory[] }) {
       {results && (
         <div className="mt-3 flex flex-wrap gap-2">
           {results.map((r) => (
-            <span key={r.name} className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm shadow-sm">
+            <span
+              key={r.name}
+              title={`${money(r.base)} base + ${money(r.dist)} distance`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm shadow-sm"
+            >
               <span className="text-gray-500">{r.name}</span>
               <span className="font-display font-bold text-ink-950">{money(r.total)}</span>
+              <span className="text-[11px] text-gray-400">
+                ({money(r.base)} + {money(r.dist)})
+              </span>
             </span>
           ))}
         </div>

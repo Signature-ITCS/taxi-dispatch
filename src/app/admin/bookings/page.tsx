@@ -83,8 +83,8 @@ export default function BookingsPage() {
 
       <div className="px-5 pb-10 md:px-8">
         {/* Controls */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative min-w-0 flex-1 md:min-w-[200px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               value={q}
@@ -93,13 +93,14 @@ export default function BookingsPage() {
               className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-emerald-400"
             />
           </div>
-          <div className="flex gap-1.5">
+          {/* Filter chips scroll sideways on phones instead of wrapping */}
+          <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 pb-0.5 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
             {FILTERS.map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "rounded-lg px-3 py-2 text-xs font-semibold capitalize transition-colors",
+                  "shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold capitalize transition-colors",
                   filter === f ? "bg-ink-950 text-white" : "bg-white text-gray-500 hover:bg-gray-100 border border-gray-200"
                 )}
               >
@@ -115,7 +116,51 @@ export default function BookingsPage() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-            <div className="overflow-x-auto">
+            {/* Phone: card list */}
+            <div className="md:hidden">
+              {filtered.map((r, i) => (
+                <motion.button
+                  key={r.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: Math.min(i * 0.02, 0.3) }}
+                  onClick={() => setDetail(r)}
+                  className="block w-full border-b border-gray-50 px-4 py-3 text-left last:border-0 active:bg-gray-50"
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-mono text-xs font-semibold text-gray-500">{r.booking_number}</span>
+                      {r.trip_group_id && (
+                        <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">
+                          <Repeat className="h-2.5 w-2.5" /> {r.is_return ? "Return" : "Out"}
+                        </span>
+                      )}
+                    </span>
+                    <StatusBadge status={r.status} size="xs" />
+                  </div>
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-ink-950">
+                    <span className="truncate">{r.customer_name}</span>
+                    {r.child_seat && <Baby className="h-3.5 w-3.5 shrink-0 text-brand-500" aria-label="Child seat requested" />}
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-950">
+                    <MapPin className="h-3 w-3 shrink-0 text-brand-500" />
+                    <span className="truncate">{r.pickup_address}</span>
+                  </p>
+                  <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <Navigation className="h-3 w-3 shrink-0 text-gray-400" />
+                    <span className="truncate">{r.dropoff_address}</span>
+                  </p>
+                  <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
+                    <span className="truncate">
+                      {r.driver?.full_name ?? "No driver"} · {r.source?.name ?? "—"} · {clock(r.created_at)}
+                    </span>
+                    <span className="shrink-0 font-display text-sm font-bold text-ink-950">{money(r.estimated_fare)}</span>
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+            {/* Tablet / desktop: table */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-400">
@@ -169,12 +214,12 @@ export default function BookingsPage() {
                   ))}
                 </tbody>
               </table>
-              {filtered.length === 0 && (
-                <div className="py-12 text-center text-sm text-gray-400">
-                  <ClipboardList className="mx-auto mb-2 h-8 w-8 text-gray-300" /> No bookings match
-                </div>
-              )}
             </div>
+            {filtered.length === 0 && (
+              <div className="py-12 text-center text-sm text-gray-400">
+                <ClipboardList className="mx-auto mb-2 h-8 w-8 text-gray-300" /> No bookings match
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -238,12 +283,12 @@ function BookingDetailModal({
     }
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:p-6"
       >
         <div className="mb-4 flex items-start justify-between">
           <div>

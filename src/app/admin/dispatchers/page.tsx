@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Plus, Check, X, Trash2, Headset, Mail, Phone, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Check, X, Trash2, Headset, Mail, Phone, AlertTriangle, MailCheck, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import { cn } from "@/lib/format";
@@ -112,6 +112,8 @@ function AddDispatcher({ onClose, onDone }: { onClose: () => void; onDone: () =>
   const [form, setForm] = useState({ full_name: "", email: "", password: "", phone: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // After a successful add: did the welcome email (login details + install link) go out?
+  const [done, setDone] = useState<{ email: string; emailed: boolean } | null>(null);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const add = async () => {
@@ -144,12 +146,57 @@ function AddDispatcher({ onClose, onDone }: { onClose: () => void; onDone: () =>
         return;
       }
       onDone();
-      onClose();
+      setDone({ email: form.email.trim(), emailed: !!data.emailed });
     } catch {
       setSaving(false);
       setError("Could not add dispatcher. Try again.");
     }
   };
+
+  if (done) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
+        >
+          <div
+            className={cn(
+              "mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full",
+              done.emailed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+            )}
+          >
+            {done.emailed ? <MailCheck className="h-7 w-7" /> : <AlertTriangle className="h-7 w-7" />}
+          </div>
+          <h3 className="font-display text-lg font-bold text-ink-950">Dispatcher added</h3>
+          {done.emailed ? (
+            <>
+              <p className="mt-1 text-sm text-gray-500">
+                A welcome email with their login details has been sent to{" "}
+                <span className="font-semibold text-ink-950">{done.email}</span>.
+              </p>
+              <p className="mt-3 flex items-center justify-center gap-1.5 rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                <Smartphone className="h-3.5 w-3.5 shrink-0" /> It includes an “Install the app” button for their phone or desktop.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-gray-500">
+              The account works, but the welcome email could not be sent. Please share the email and password
+              with them directly.
+            </p>
+          )}
+          <button
+            onClick={onClose}
+            className="mt-5 w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700"
+          >
+            Done
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>

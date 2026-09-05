@@ -16,22 +16,34 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "no_service_role_key" });
   }
 
-  const [{ data: notif }, { data: company }] = await Promise.all([
+  const [{ data: notif }, { data: company }, { data: staff }] = await Promise.all([
     admin.from("app_settings").select("value").eq("key", "notifications").maybeSingle(),
     admin.from("app_settings").select("value").eq("key", "company").maybeSingle(),
+    admin.from("profiles").select("email").in("role", ["admin", "dispatcher"]).eq("is_active", true),
   ]);
-  const n = (notif?.value as Record<string, string> | null) ?? {};
+  const n = (notif?.value as Record<string, unknown> | null) ?? {};
   const c = (company?.value as Record<string, string> | null) ?? {};
+
+  // Booking-alert recipients. Until the admin saves a list, alerts go to every
+  // active staff login (legacy behaviour) — surface those as the starting list.
+  const savedList = Array.isArray(n.booking_alert_emails) ? (n.booking_alert_emails as string[]) : null;
+  const staffEmails = ((staff ?? []) as { email: string | null }[])
+    .map((s) => s.email?.trim().toLowerCase())
+    .filter((e): e is string => !!e);
 
   return NextResponse.json({
     ok: true,
     config: {
-      email_from: n.email_from || process.env.EMAIL_FROM || "",
-      sms_sender: n.sms_sender || process.env.COSMICSMS_SENDER || "",
+      email_from: (n.email_from as string) || process.env.EMAIL_FROM || "",
+      sms_sender: (n.sms_sender as string) || process.env.COSMICSMS_SENDER || "",
       timezone: c.timezone || "",
+      booking_alert_emails: savedList ?? Array.from(new Set(staffEmails)),
+      alert_emails_saved: savedList !== null,
     },
   });
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Admin-only. Updates the editable (non-secret) config. */
 export async function POST(req: Request) {
@@ -52,6 +64,18 @@ export async function POST(req: Request) {
   const notif = { ...((notifRow?.value as Record<string, unknown>) ?? {}) };
   if (typeof b.email_from === "string") notif.email_from = b.email_from.trim();
   if (typeof b.sms_sender === "string") notif.sms_sender = b.sms_sender.trim();
+  // Exact list of who gets the "New booking" alert. An empty list is valid
+  // (nobody). Invalid / duplicate addresses are dropped rather than rejected.
+  if (Array.isArray(b.booking_alert_emails)) {
+    const cleaned = Array.from(
+      new Set(
+        (b.booking_alert_emails as unknown[])
+          .map((e) => String(e ?? "").trim().toLowerCase())
+          .filter((e) => e && EMAIL_RE.test(e))
+      )
+    ).slice(0, 50);
+    notif.booking_alert_emails = cleaned;
+  }
   await admin.from("app_settings").upsert({ key: "notifications", value: notif });
 
   const { data: compRow } = await admin.from("app_settings").select("value").eq("key", "company").maybeSingle();
@@ -65,7 +89,9 @@ export async function POST(req: Request) {
     actor_name: me.full_name,
     actor_role: me.role,
     action: "settings_updated",
-    description: "Updated notification & timezone settings",
+    description: Array.isArray(b.booking_alert_emails)
+      ? `Updated settings — booking alerts go to ${(notif.booking_alert_emails as string[]).length} address(es)`
+      : "Updated notification & timezone settings",
   });
 
   return NextResponse.json({ ok: true });

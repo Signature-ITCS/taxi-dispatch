@@ -31,6 +31,8 @@ import {
   Phone,
   StickyNote,
   Check,
+  ArrowLeft,
+  Map as MapIcon,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -70,6 +72,8 @@ export default function DispatchPage() {
   const [loading, setLoading] = useState(true);
   const [showManual, setShowManual] = useState(false);
   const [view, setView] = useState<"live" | "scheduled">("live");
+  // Phone-only: route map inside the job-details sheet (desktop has the centre map)
+  const [showMap, setShowMap] = useState(false);
   // Trip being completed — dispatcher confirms the fare + (for cash) collection.
   const [completing, setCompleting] = useState<{
     id: string;
@@ -197,6 +201,7 @@ export default function DispatchPage() {
   };
 
   const cancelJob = async (id: string) => {
+    if (!confirm("Cancel this ride? The customer will no longer be picked up.")) return;
     await supabase.from("bookings").update({ status: "cancelled" }).eq("id", id);
     setSelectedId(null);
     loadJobs();
@@ -267,26 +272,30 @@ export default function DispatchPage() {
   const pendingCount = liveJobs.filter((j) => j.status === "pending").length;
 
   return (
-    <div className="flex h-screen flex-col bg-gray-50">
+    // Phones: fill the viewport minus the bottom tab bar; desktop: full height.
+    <div className="flex h-[calc(100dvh-64px-env(safe-area-inset-bottom))] flex-col bg-gray-50 md:h-screen">
       {/* Header */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-200 bg-white px-5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 sm:px-5 md:h-16">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 md:h-9 md:w-9">
             <Radio className="h-5 w-5 text-white" strokeWidth={2.3} />
           </div>
-          <div>
-            <h1 className="font-display text-base font-bold leading-tight text-ink-950">Dispatch Center</h1>
-            <p className="text-xs text-gray-400">Live operations</p>
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-[15px] font-bold leading-tight text-ink-950 md:text-base">
+              Dispatch Center
+            </h1>
+            <p className="hidden text-xs text-gray-400 sm:block">Live operations</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Stat icon={Inbox} label="Pending" value={pendingCount} tone="amber" />
-          <Stat icon={Users} label="Drivers" value={driverCount} tone="green" />
+          <Stat icon={Users} label="Drivers" value={driverCount} tone="green" className="hidden sm:flex" />
           <button
             onClick={() => setShowManual(true)}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+            aria-label="New booking"
+            className="flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 sm:px-4"
           >
-            <Plus className="h-4 w-4" /> New Booking
+            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">New Booking</span>
           </button>
         </div>
       </header>
@@ -296,7 +305,7 @@ export default function DispatchPage() {
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[360px_1fr_380px]">
+        <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden p-2.5 sm:p-4 lg:grid-cols-[360px_1fr_380px]">
           {/* LEFT — Job list */}
           <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
             <div className="flex gap-1 border-b border-gray-100 p-2">
@@ -414,10 +423,32 @@ export default function DispatchPage() {
             <DriverMap selectedJob={selected} />
           </section>
 
-          {/* RIGHT — Assign */}
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-4 py-3">
-              <h2 className="font-display text-sm font-bold text-ink-950">Assign Driver</h2>
+          {/* RIGHT — Assign. On phones it becomes a full-screen "job details" sheet
+              that opens over the list once a job is tapped. */}
+          <section
+            className={cn(
+              "min-h-0 flex-col overflow-hidden bg-white",
+              "fixed inset-0 z-40 md:left-56 lg:static lg:z-auto lg:rounded-2xl lg:border lg:border-gray-200",
+              selected ? "flex" : "hidden lg:flex"
+            )}
+          >
+            <div className="flex items-center gap-1.5 border-b border-gray-100 px-3 py-2.5 lg:px-4 lg:py-3">
+              <button
+                onClick={() => setSelectedId(null)}
+                aria-label="Back to jobs"
+                className="-ml-1 rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <h2 className="font-display text-sm font-bold text-ink-950">
+                <span className="lg:hidden">Job details</span>
+                <span className="hidden lg:inline">Assign Driver</span>
+              </h2>
+              {selected && (
+                <span className="ml-auto lg:hidden">
+                  <StatusBadge status={selected.status} size="xs" />
+                </span>
+              )}
             </div>
             {!selected ? (
               <div className="flex flex-1 flex-col items-center justify-center p-6 text-center text-sm text-gray-400">
@@ -527,6 +558,19 @@ export default function DispatchPage() {
                   </div>
                 </div>
 
+                {/* Phone-only route map (desktop shows it in the centre column) */}
+                <button
+                  onClick={() => setShowMap((v) => !v)}
+                  className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 lg:hidden"
+                >
+                  <MapIcon className="h-4 w-4 text-brand-500" /> {showMap ? "Hide route map" : "Show route map"}
+                </button>
+                {showMap && (
+                  <div className="mb-3 h-56 overflow-hidden rounded-xl border border-gray-200 lg:hidden">
+                    <DriverMap selectedJob={selected} />
+                  </div>
+                )}
+
                 {/* Assigned driver → WhatsApp notify + status controls */}
                 {selectedDriver && (
                   <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
@@ -634,7 +678,7 @@ export default function DispatchPage() {
                           <button
                             onClick={() => assign(d.id)}
                             disabled={assigning === d.id || isCurrent}
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"
                           >
                             {assigning === d.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -661,14 +705,14 @@ export default function DispatchPage() {
 
       {completing && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
           onClick={() => setCompleting(null)}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs overflow-hidden rounded-2xl bg-white p-5 shadow-xl"
+            className="w-full overflow-hidden rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-w-xs sm:rounded-2xl sm:pb-5"
           >
             <h3 className="font-display text-lg font-bold text-ink-950">Complete trip</h3>
             <p className="mt-1 text-xs text-gray-400">
@@ -729,16 +773,16 @@ export default function DispatchPage() {
 function ManualBookingModal({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-0 sm:p-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="my-6 w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="min-h-full w-full overflow-hidden bg-white shadow-xl sm:my-6 sm:min-h-0 sm:max-w-md sm:rounded-2xl"
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 sm:px-5 sm:py-4">
           <div>
             <h3 className="font-display text-lg font-bold text-ink-950">New booking</h3>
             <p className="text-xs text-gray-400">Phone or walk-in — same flow as the customer</p>
@@ -784,18 +828,20 @@ function Stat({
   label,
   value,
   tone,
+  className,
 }: {
   icon: LucideIcon;
   label: string;
   value: number;
   tone: "amber" | "green";
+  className?: string;
 }) {
   const tones = {
     amber: "bg-brand-50 text-brand-700",
     green: "bg-green-50 text-green-700",
   };
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-gray-100 px-3 py-1.5">
+    <div className={cn("flex items-center gap-2 rounded-xl border border-gray-100 px-2.5 py-1.5 sm:px-3", className)}>
       <span className={cn("flex h-7 w-7 items-center justify-center rounded-lg", tones[tone])}>
         <Icon className="h-4 w-4" />
       </span>

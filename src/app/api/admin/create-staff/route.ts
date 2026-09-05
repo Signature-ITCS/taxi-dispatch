@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail, emailEnabled } from "@/lib/email";
+import { staffWelcomeEmail } from "@/lib/emailTemplates";
 
 /** Admin-only: create a dispatcher/admin login. Needs SERVICE_ROLE key. Drivers are records (no login). */
 export async function POST(req: Request) {
@@ -47,5 +49,27 @@ export async function POST(req: Request) {
     description: `Added ${role} account: ${email}`,
   });
 
-  return NextResponse.json({ ok: true });
+  // Welcome email with their login details + "Install the app" link.
+  // Best-effort: the account is already created, so an email failure must
+  // never fail the request — we just tell the admin it didn't go out.
+  let emailed = false;
+  if (await emailEnabled()) {
+    try {
+      const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+      const mail = staffWelcomeEmail({
+        fullName: full_name,
+        email,
+        password,
+        role,
+        loginUrl: `${origin}/login`,
+        installUrl: `${origin}/install`,
+        invitedBy: me.full_name || null,
+      });
+      emailed = await sendEmail({ to: email, subject: mail.subject, html: mail.html });
+    } catch {
+      emailed = false;
+    }
+  }
+
+  return NextResponse.json({ ok: true, emailed });
 }

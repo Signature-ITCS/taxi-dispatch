@@ -21,6 +21,8 @@ export interface BookingEmailData {
   isReturn?: boolean;
   returnBookingNumber?: string | null;
   trackUrl: string;
+  /** Customer-facing /install page (one-tap PWA install). Optional. */
+  installUrl?: string;
   siteName?: string;
 }
 
@@ -128,9 +130,20 @@ export function customerConfirmationEmail(d: BookingEmailData): { subject: strin
       <div style="margin-top:22px;">
         ${button(d.trackUrl, "Track your order")}
         <p style="margin:10px 0 0 0;color:#9ca3af;font-size:12px;">
-          Open the tracking page on your phone to follow your driver live — you can also add it to your home screen as an app.
+          Open the tracking page on your phone to follow your driver live.
         </p>
-      </div>`,
+      </div>
+      ${
+        d.installUrl
+          ? `<div style="margin-top:18px;padding-top:18px;border-top:1px solid #f0f0f0;">
+        <p style="margin:0 0 2px 0;color:${INK};font-size:14px;font-weight:600;">Get the app 📲</p>
+        <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">
+          Add ${escapeHtml(site)} to your phone's home screen — track this ride and book the next one in one tap. Open the link on your phone and press <b>Install</b>.
+        </p>
+        ${installButton(d.installUrl, "Install the app")}
+      </div>`
+          : ""
+      }`,
   });
   return { subject: `Booking confirmed — ${d.bookingNumber}`, html };
 }
@@ -157,4 +170,106 @@ function escapeHtml(s: string): string {
 }
 function escapeAttr(s: string): string {
   return escapeHtml(s).replace(/"/g, "&quot;");
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Staff onboarding                                                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export interface StaffWelcomeData {
+  fullName: string;
+  email: string;
+  password: string;
+  role: "dispatcher" | "admin";
+  loginUrl: string;
+  installUrl: string;
+  invitedBy?: string | null;
+  siteName?: string;
+}
+
+/**
+ * "Your account is ready" email sent when an admin creates a dispatcher/admin
+ * login. Contains the credentials, a sign-in button and an "Install the app"
+ * button (→ /install page, which triggers the PWA install prompt).
+ */
+export function staffWelcomeEmail(d: StaffWelcomeData): { subject: string; html: string } {
+  const site = d.siteName || "TaxiFlow";
+  const first = escapeHtml(d.fullName.split(" ")[0] || "there");
+  const roleLabel = d.role === "admin" ? "Administrator" : "Dispatcher";
+  const area = d.role === "admin" ? "admin panel" : "dispatch board";
+
+  const credBox = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#fafafa;border:1px solid #ececec;border-radius:12px;">
+      <tr><td style="padding:16px 18px;">
+        <p style="margin:0 0 10px 0;color:#9ca3af;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;">Your login details</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;width:34%;">Sign-in page</td>
+            <td style="padding:6px 0;font-size:14px;"><a href="${escapeAttr(d.loginUrl)}" style="color:#2563eb;text-decoration:none;">${escapeHtml(d.loginUrl.replace(/^https?:\/\//, ""))}</a></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Email</td>
+            <td style="padding:6px 0;color:${INK};font-size:14px;font-weight:600;">${escapeHtml(d.email)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Password</td>
+            <td style="padding:6px 0;"><span style="display:inline-block;font-family:SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;font-weight:700;color:${INK};background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;letter-spacing:.04em;">${escapeHtml(d.password)}</span></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;color:#6b7280;font-size:13px;">Role</td>
+            <td style="padding:6px 0;color:${INK};font-size:14px;">${roleLabel}</td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>`;
+
+  const steps = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;">
+      <tr><td style="padding-bottom:8px;color:${INK};font-size:15px;font-weight:700;">Get set up in 2 quick steps</td></tr>
+      <tr><td style="padding:10px 0;border-top:1px solid #f0f0f0;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:top;padding-right:12px;"><span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:${BRAND};color:${INK};font-weight:800;font-size:13px;">1</span></td>
+          <td style="vertical-align:top;">
+            <p style="margin:0 0 2px 0;color:${INK};font-size:14px;font-weight:600;">Sign in</p>
+            <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">Use the email and password above to open the ${area}.</p>
+            ${button(d.loginUrl, "Sign in now")}
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:10px 0;border-top:1px solid #f0f0f0;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:top;padding-right:12px;"><span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:${BRAND};color:${INK};font-weight:800;font-size:13px;">2</span></td>
+          <td style="vertical-align:top;">
+            <p style="margin:0 0 2px 0;color:${INK};font-size:14px;font-weight:600;">Install the app 📲</p>
+            <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">Add ${escapeHtml(site)} to your phone's home screen or your desktop so it opens like a normal app, full-screen and one tap away. Open the link below on the device you want to install it on and press <b>Install</b>.</p>
+            ${installButton(d.installUrl, "Install the app")}
+          </td>
+        </tr></table>
+      </td></tr>
+    </table>`;
+
+  const html = shell({
+    preheader: `Your ${roleLabel.toLowerCase()} account for ${site} is ready — sign in and install the app.`,
+    heading: `Welcome aboard, ${first}! 👋`,
+    sub: `${d.invitedBy ? `${escapeHtml(d.invitedBy)} has` : "We've"} created your ${roleLabel.toLowerCase()} account on ${escapeHtml(site)}. Here's everything you need to get started.`,
+    footer: `${site} Dispatch`,
+    body: `
+      ${credBox}
+      ${steps}
+      <p style="margin:22px 0 0 0;padding:12px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;color:#8c5f00;font-size:12px;line-height:1.5;">
+        🔒 Keep this email private — it contains your password. Don't forward it or share your login with anyone.
+      </p>`,
+  });
+
+  return { subject: `Your ${site} ${roleLabel.toLowerCase()} account is ready`, html };
+}
+
+/** Dark "install" button so it stands apart from the amber primary action. */
+function installButton(url: string, label: string): string {
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px 0;"><tr>
+      <td style="border-radius:12px;background:${INK};">
+        <a href="${escapeAttr(url)}" style="display:inline-block;padding:14px 26px;color:#ffffff;font-weight:700;font-size:15px;text-decoration:none;border-radius:12px;">⬇&nbsp; ${escapeHtml(label)}</a>
+      </td>
+    </tr></table>`;
 }

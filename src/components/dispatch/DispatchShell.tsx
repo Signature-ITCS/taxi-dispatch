@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Radio, ClipboardList, CarFront, Users } from "lucide-react";
+import { Radio, ClipboardList, CarFront, Users, LogOut } from "lucide-react";
 import SignOutButton from "@/components/dashboard/SignOutButton";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/format";
 
 const NAV = [
-  { href: "/dispatch", label: "Live board", icon: Radio },
-  { href: "/dispatch/bookings", label: "Bookings", icon: ClipboardList },
-  { href: "/dispatch/drivers", label: "Drivers", icon: CarFront },
-  { href: "/dispatch/customers", label: "Customers", icon: Users },
+  { href: "/dispatch", label: "Live board", short: "Live", icon: Radio },
+  { href: "/dispatch/bookings", label: "Bookings", short: "Bookings", icon: ClipboardList },
+  { href: "/dispatch/drivers", label: "Drivers", short: "Drivers", icon: CarFront },
+  { href: "/dispatch/customers", label: "Customers", short: "Customers", icon: Users },
 ];
 
 export default function DispatchShell({
@@ -24,10 +25,17 @@ export default function DispatchShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const signOut = async () => {
+    await createClient().auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
+      {/* Sidebar — tablet / desktop */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-gray-200 bg-white md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600">
@@ -79,8 +87,51 @@ export default function DispatchShell({
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="min-h-screen flex-1 md:ml-56">{children}</main>
+      {/* Main — on phones leave room for the bottom tab bar */}
+      <main className="min-h-screen flex-1 pb-[calc(64px+env(safe-area-inset-bottom))] md:ml-56 md:pb-0">
+        {children}
+      </main>
+
+      {/* Bottom tab bar — phones only */}
+      <nav
+        aria-label="Dispatch navigation"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        <div className="grid h-16 grid-cols-5">
+          {NAV.map((item) => {
+            const active = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 text-[10.5px] font-semibold transition-colors",
+                  active ? "text-blue-600" : "text-gray-400 active:text-ink-950"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-12 items-center justify-center rounded-full transition-colors",
+                    active && "bg-blue-50"
+                  )}
+                >
+                  <item.icon className="h-[20px] w-[20px]" strokeWidth={active ? 2.4 : 2} />
+                </span>
+                {item.short}
+              </Link>
+            );
+          })}
+          <button
+            onClick={signOut}
+            className="flex flex-col items-center justify-center gap-1 text-[10.5px] font-semibold text-gray-400 active:text-red-600"
+          >
+            <span className="flex h-8 w-12 items-center justify-center rounded-full">
+              <LogOut className="h-[20px] w-[20px]" strokeWidth={2} />
+            </span>
+            Sign out
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

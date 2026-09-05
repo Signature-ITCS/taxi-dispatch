@@ -35,6 +35,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Lets env(safe-area-inset-*) work on notched phones (bottom tab bar padding).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

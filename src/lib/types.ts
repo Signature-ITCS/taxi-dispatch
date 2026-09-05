@@ -92,14 +92,19 @@ export interface ViaPoint {
   lng: number | null;
 }
 
+/**
+ * Fare = base_fare + distance_cost (tapered per-mile bands) + extras
+ * (airport / night / child seat). Per-minute cost and minimum fare were
+ * removed on 2026-09-05; the optional fields only appear on older bookings.
+ */
 export interface FareBreakdown {
   category: string;
   base_fare: number;
   distance_cost: number;
-  time_cost: number;
+  time_cost?: number;
   extras: { name: string; amount: number; type: ChargeType }[];
   extras_total: number;
-  minimum_fare: number;
+  minimum_fare?: number;
   total: number;
 }
 

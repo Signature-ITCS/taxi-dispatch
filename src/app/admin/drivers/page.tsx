@@ -201,7 +201,7 @@ export default function DriversPage() {
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-1">
+                  <div className="flex shrink-0 items-center gap-0 sm:gap-1">
                     <IconBtn icon={Pencil} title="Edit driver" onClick={() => openEdit(d)} />
                     <IconBtn
                       icon={ShieldCheck}
@@ -514,12 +514,12 @@ function DriverModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-md sm:rounded-2xl sm:p-6"
       >
         <h3 className="mb-1 font-display text-lg font-bold text-ink-950">
           {editing ? "Edit Driver" : "Add Driver"}

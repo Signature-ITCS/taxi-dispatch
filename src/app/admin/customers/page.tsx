@@ -65,7 +65,7 @@ export default function CustomersPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.04, 0.3) }}
                 onClick={() => setDetail(c)}
-                className="flex cursor-pointer items-center justify-between border-b border-gray-50 px-5 py-4 last:border-0 hover:bg-gray-50/60"
+                className="flex cursor-pointer items-center justify-between gap-2 border-b border-gray-50 px-4 py-3.5 last:border-0 hover:bg-gray-50/60 sm:px-5 sm:py-4"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
@@ -81,7 +81,7 @@ export default function CustomersPage() {
                         <Mail className="h-3 w-3" /> {c.email || "No email"}
                       </span>
                       <span>· {c.total_rides} rides</span>
-                      <span>· joined {timeAgo(c.created_at)}</span>
+                      <span className="hidden sm:inline">· joined {timeAgo(c.created_at)}</span>
                     </p>
                   </div>
                 </div>
@@ -150,12 +150,12 @@ function CustomerDetailModal({
   const lastRide = bookings[0]?.created_at ?? null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:p-6"
       >
         {/* Header */}
         <div className="mb-4 flex items-start justify-between">

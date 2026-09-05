@@ -226,13 +226,27 @@ export async function POST(req: Request) {
       const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
       const admin = createAdminClient();
       const out = b.outbound as Leg;
-      const [{ data: cat }, { data: staff }] = await Promise.all([
+      const [{ data: cat }, { data: notif }] = await Promise.all([
         admin.from("vehicle_categories").select("name").eq("id", b.category_id).maybeSingle(),
-        admin.from("profiles").select("email").in("role", ["admin", "dispatcher"]),
+        admin.from("app_settings").select("value").eq("key", "notifications").maybeSingle(),
       ]);
-      const staffEmails = ((staff ?? []) as { email: string | null }[])
-        .map((s) => s.email)
-        .filter((e): e is string => !!e);
+      // "New booking" alert recipients = exactly the list the admin saved in
+      // Settings → Booking alert emails (an empty list means nobody). Only if
+      // that list has never been saved do we fall back to every active staff login.
+      const savedList = (notif?.value as { booking_alert_emails?: unknown } | null)?.booking_alert_emails;
+      let staffEmails: string[];
+      if (Array.isArray(savedList)) {
+        staffEmails = savedList.map((e) => String(e)).filter(Boolean);
+      } else {
+        const { data: staff } = await admin
+          .from("profiles")
+          .select("email")
+          .in("role", ["admin", "dispatcher"])
+          .eq("is_active", true);
+        staffEmails = ((staff ?? []) as { email: string | null }[])
+          .map((s) => s.email)
+          .filter((e): e is string => !!e);
+      }
 
       const totalFare = overrideFare ?? ((outbound.estimated_fare ?? 0) + (ret?.ok ? ret.estimated_fare ?? 0 : 0));
       const data: BookingEmailData = {
@@ -252,6 +266,7 @@ export async function POST(req: Request) {
         isReturn: false,
         returnBookingNumber: ret?.booking_number ?? null,
         trackUrl: `${origin}/track/${outbound.booking_number}`,
+        installUrl: `${origin}/install`,
         siteName: outbound.website,
       };
 

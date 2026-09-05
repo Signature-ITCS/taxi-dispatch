@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Car, Mail, Lock, Loader2, LogIn } from "lucide-react";
@@ -22,6 +22,29 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const need = params.get("need");
+
+  // Already signed in (e.g. the installed app re-opened on /login)? Skip the
+  // form and go straight to the right board.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, is_active")
+        .eq("id", user.id)
+        .single();
+      if (cancelled || !profile?.is_active) return;
+      router.replace(params.get("next") || HOME[profile.role] || "/");
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();

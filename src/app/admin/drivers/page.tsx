@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
+import SheetHandle from "@/components/dashboard/SheetHandle";
 import { cn, dateTime, money } from "@/lib/format";
 import { logActivity } from "@/lib/activity";
 import type { Driver } from "@/lib/types";
@@ -140,7 +141,7 @@ export default function DriversPage() {
         action={
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700"
+            className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 sm:gap-2 sm:px-4"
           >
             <Plus className="h-4 w-4" /> Add Driver
           </button>
@@ -165,7 +166,8 @@ export default function DriversPage() {
       ) : drivers.length === 0 ? (
         <p className="px-5 py-16 text-center text-sm text-gray-400 md:px-8">No drivers yet — add your first one.</p>
       ) : (
-        <div className="grid gap-4 px-5 pb-10 md:grid-cols-2 md:px-8">
+        // grid-cols-1 = minmax(0,1fr): long emails/addresses truncate instead of widening the card
+        <div className="grid grid-cols-1 gap-4 px-5 pb-10 md:grid-cols-2 md:px-8">
           {drivers.map((d, i) => {
             const v = d.vehicle?.[0];
             const car = v ? [v.color, v.make, v.model].filter(Boolean).join(" ") : null;
@@ -201,7 +203,8 @@ export default function DriversPage() {
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-0 sm:gap-1">
+                  {/* Icon actions — tablet / desktop. On phones these move to a labelled row below. */}
+                  <div className="hidden shrink-0 items-center gap-1 sm:flex">
                     <IconBtn icon={Pencil} title="Edit driver" onClick={() => openEdit(d)} />
                     <IconBtn
                       icon={ShieldCheck}
@@ -226,16 +229,35 @@ export default function DriversPage() {
                   <Info icon={Car} value={car ? `${car}${v?.license_plate ? ` · ${v.license_plate}` : ""}` : "No vehicle"} muted={!car} />
                   <Info icon={IdCard} value={d.license_number || "No licence"} muted={!d.license_number} />
                   <div className="sm:col-span-2">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
-                      <MapPin className="h-3.5 w-3.5" /> {d.service_area || "No service area set"}
+                    <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{d.service_area || "No service area set"}</span>
                     </span>
                   </div>
                 </div>
 
+                {/* Phone actions — big labelled tap targets instead of tiny icons */}
+                <div className="mt-3 grid grid-cols-4 gap-1.5 border-t border-gray-50 pt-3 sm:hidden">
+                  <MobileAction icon={Pencil} label="Edit" onClick={() => openEdit(d)} />
+                  <MobileAction
+                    icon={ShieldCheck}
+                    label={d.is_approved ? "Approved" : "Approve"}
+                    onClick={() => toggle(d, "is_approved")}
+                    className={d.is_approved ? "bg-green-50 text-green-700" : ""}
+                  />
+                  <MobileAction
+                    icon={Ban}
+                    label={d.is_blocked ? "Blocked" : "Block"}
+                    onClick={() => toggle(d, "is_blocked")}
+                    className={d.is_blocked ? "bg-red-50 text-red-600" : ""}
+                  />
+                  <MobileAction icon={Trash2} label="Delete" onClick={() => setToDelete(d)} danger />
+                </div>
+
                 {cash[d.id]?.amount > 0 && (
-                  <div className="mt-3 flex items-center justify-between rounded-xl border border-green-100 bg-green-50/60 px-3 py-2.5">
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-green-700">
-                      <Banknote className="h-4 w-4" /> Cash held: {money(cash[d.id].amount)}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-green-100 bg-green-50/60 px-3 py-2.5">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-semibold text-green-700">
+                      <Banknote className="h-4 w-4 shrink-0" /> Cash held: {money(cash[d.id].amount)}
                       <span className="text-xs font-normal text-green-600">({cash[d.id].count} rides)</span>
                     </span>
                     <button
@@ -333,6 +355,35 @@ function IconBtn({
       )}
     >
       <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
+/** Phone-only card action: icon + short label, ≥44px tall so it's easy to tap. */
+function MobileAction({
+  icon: Icon,
+  label,
+  onClick,
+  className,
+  danger,
+}: {
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+  className?: string;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[11px] font-semibold transition-colors",
+        danger ? "text-gray-500 active:bg-red-50 active:text-red-600" : "text-gray-500 active:bg-gray-100",
+        className
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
     </button>
   );
 }
@@ -521,17 +572,18 @@ function DriverModal({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-md sm:rounded-2xl sm:p-6"
       >
+        <SheetHandle />
         <h3 className="mb-1 font-display text-lg font-bold text-ink-950">
           {editing ? "Edit Driver" : "Add Driver"}
         </h3>
         <p className="mb-4 text-xs text-gray-400">Drivers don&apos;t log in — they receive jobs on WhatsApp.</p>
 
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input value={form.full_name} onChange={(v) => set("full_name", v)} placeholder="Full name *" />
-            <Input value={form.whatsapp} onChange={(v) => set("whatsapp", v)} placeholder="WhatsApp * (+44…)" />
+            <Input value={form.whatsapp} onChange={(v) => set("whatsapp", v)} placeholder="WhatsApp * (+44…)" type="tel" />
           </div>
-          <Input value={form.email} onChange={(v) => set("email", v)} placeholder="Email (optional)" />
+          <Input value={form.email} onChange={(v) => set("email", v)} placeholder="Email (optional)" type="email" />
           <Input
             value={form.service_area}
             onChange={(v) => set("service_area", v)}
@@ -543,7 +595,7 @@ function DriverModal({
           <select
             value={form.category_id}
             onChange={(e) => set("category_id", e.target.value)}
-            className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-400"
+            className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-base outline-none focus:border-emerald-400 sm:text-sm"
           >
             {cats.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
@@ -583,17 +635,21 @@ function Input({
   value,
   onChange,
   placeholder,
+  type = "text",
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  type?: "text" | "tel" | "email";
 }) {
   return (
     <input
+      type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10"
+      // 16px on phones so iOS Safari doesn't auto-zoom the page on focus
+      className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-base outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10 sm:text-sm"
     />
   );
 }

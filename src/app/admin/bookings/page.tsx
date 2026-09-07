@@ -26,6 +26,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import StatusBadge from "@/components/dashboard/StatusBadge";
+import SheetHandle from "@/components/dashboard/SheetHandle";
 import { money, clock, cn } from "@/lib/format";
 import { STATUS_META } from "@/lib/constants";
 import type { Booking, BookingStatus } from "@/lib/types";
@@ -90,7 +91,8 @@ export default function BookingsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search bookings…"
-              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-emerald-400"
+              // 16px on phones so iOS Safari doesn't auto-zoom the page on focus
+              className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-base outline-none focus:border-emerald-400 md:text-sm"
             />
           </div>
           {/* Filter chips scroll sideways on phones instead of wrapping */}
@@ -290,9 +292,10 @@ function BookingDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:p-6"
       >
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2">
+        <SheetHandle />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-sm font-semibold text-gray-500">{row.booking_number}</span>
               <StatusBadge status={row.status} size="xs" />
             </div>
@@ -300,7 +303,7 @@ function BookingDetailModal({
               {row.source?.name ?? "—"} · {clock(row.created_at)}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -396,7 +399,7 @@ function BookingDetailModal({
             </span>
             <span className="font-display text-xl font-bold text-ink-950">{money(row.estimated_fare)}</span>
           </div>
-          <div className="mt-2 flex items-center justify-between border-t border-brand-200/60 pt-2">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-brand-200/60 pt-2">
             <span
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",

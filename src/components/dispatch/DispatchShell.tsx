@@ -88,7 +88,8 @@ export default function DispatchShell({
       </aside>
 
       {/* Main — on phones leave room for the bottom tab bar */}
-      <main className="min-h-screen flex-1 pb-[calc(64px+env(safe-area-inset-bottom))] md:ml-56 md:pb-0">
+      {/* min-w-0 stops long content stretching the flex child past the viewport (horizontal scroll on phones) */}
+      <main className="min-h-screen min-w-0 flex-1 overflow-x-hidden pb-[calc(64px+env(safe-area-inset-bottom))] md:ml-56 md:pb-0">
         {children}
       </main>
 

@@ -223,33 +223,19 @@ export function staffWelcomeEmail(d: StaffWelcomeData): { subject: string; html:
       </td></tr>
     </table>`;
 
+  // Single call-to-action: install the app (the login page is linked in the
+  // credentials box above, and the installed app opens straight to sign-in).
   const steps = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;">
-      <tr><td style="padding-bottom:8px;color:${INK};font-size:15px;font-weight:700;">Get set up in 2 quick steps</td></tr>
-      <tr><td style="padding:10px 0;border-top:1px solid #f0f0f0;">
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:top;padding-right:12px;"><span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:${BRAND};color:${INK};font-weight:800;font-size:13px;">1</span></td>
-          <td style="vertical-align:top;">
-            <p style="margin:0 0 2px 0;color:${INK};font-size:14px;font-weight:600;">Sign in</p>
-            <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">Use the email and password above to open the ${area}.</p>
-            ${button(d.loginUrl, "Sign in now")}
-          </td>
-        </tr></table>
-      </td></tr>
-      <tr><td style="padding:10px 0;border-top:1px solid #f0f0f0;">
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:top;padding-right:12px;"><span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:${BRAND};color:${INK};font-weight:800;font-size:13px;">2</span></td>
-          <td style="vertical-align:top;">
-            <p style="margin:0 0 2px 0;color:${INK};font-size:14px;font-weight:600;">Install the app 📲</p>
-            <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">Add ${escapeHtml(site)} to your phone's home screen or your desktop so it opens like a normal app, full-screen and one tap away. Open the link below on the device you want to install it on and press <b>Install</b>.</p>
-            ${installButton(d.installUrl, "Install the app")}
-          </td>
-        </tr></table>
+      <tr><td style="padding:12px 0 0 0;border-top:1px solid #f0f0f0;">
+        <p style="margin:0 0 4px 0;color:${INK};font-size:15px;font-weight:700;">Install the app 📲</p>
+        <p style="margin:0 0 8px 0;color:#6b7280;font-size:13px;line-height:1.5;">Add ${escapeHtml(site)} to your phone's home screen or your desktop so the ${area} opens like a normal app, full-screen and one tap away. Open the link below on the device you want to install it on, press <b>Install</b>, then sign in with the details above.</p>
+        ${button(d.installUrl, "Install the app")}
       </td></tr>
     </table>`;
 
   const html = shell({
-    preheader: `Your ${roleLabel.toLowerCase()} account for ${site} is ready — sign in and install the app.`,
+    preheader: `Your ${roleLabel.toLowerCase()} account for ${site} is ready — install the app to get started.`,
     heading: `Welcome aboard, ${first}! 👋`,
     sub: `${d.invitedBy ? `${escapeHtml(d.invitedBy)} has` : "We've"} created your ${roleLabel.toLowerCase()} account on ${escapeHtml(site)}. Here's everything you need to get started.`,
     footer: `${site} Dispatch`,
@@ -264,7 +250,7 @@ export function staffWelcomeEmail(d: StaffWelcomeData): { subject: string; html:
   return { subject: `Your ${site} ${roleLabel.toLowerCase()} account is ready`, html };
 }
 
-/** Dark "install" button so it stands apart from the amber primary action. */
+/** Dark secondary "install" button — used in the customer email where the amber "Track" button is the primary action. */
 function installButton(url: string, label: string): string {
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px 0;"><tr>

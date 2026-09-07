@@ -18,6 +18,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import StatusBadge from "@/components/dashboard/StatusBadge";
+import SheetHandle from "@/components/dashboard/SheetHandle";
 import { cn, timeAgo, money, clock, dateTime } from "@/lib/format";
 import type { Customer, Booking } from "@/lib/types";
 
@@ -72,13 +73,14 @@ export default function CustomersPage() {
                     {c.full_name.charAt(0)}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink-950">{c.full_name}</p>
+                    <p className="truncate text-sm font-semibold text-ink-950">{c.full_name}</p>
                     <p className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-gray-400">
                       <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" /> {c.whatsapp}
+                        <Phone className="h-3 w-3 shrink-0" /> {c.whatsapp}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" /> {c.email || "No email"}
+                      <span className="flex max-w-full items-center gap-1">
+                        <Mail className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{c.email || "No email"}</span>
                       </span>
                       <span>· {c.total_rides} rides</span>
                       <span className="hidden sm:inline">· joined {timeAgo(c.created_at)}</span>
@@ -157,15 +159,16 @@ function CustomerDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-h-[90vh] sm:max-w-lg sm:rounded-2xl sm:p-6"
       >
+        <SheetHandle />
         {/* Header */}
-        <div className="mb-4 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-100 text-lg font-bold text-blue-700">
               {customer.full_name.charAt(0)}
             </div>
-            <div>
-              <p className="flex items-center gap-2 font-display text-lg font-bold text-ink-950">
-                {customer.full_name}
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 font-display text-lg font-bold leading-tight text-ink-950">
+                <span className="truncate">{customer.full_name}</span>
                 {customer.is_blocked && (
                   <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">Blocked</span>
                 )}
@@ -173,7 +176,7 @@ function CustomerDetailModal({
               <p className="text-xs text-gray-400">Joined {timeAgo(customer.created_at)}</p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+          <button onClick={onClose} className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -198,7 +201,7 @@ function CustomerDetailModal({
         </div>
 
         {/* Bookings */}
-        <p className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-gray-400">
+        <p className="mb-2 flex flex-wrap items-center justify-between gap-x-2 text-xs font-bold uppercase tracking-wide text-gray-400">
           <span>Booking history</span>
           {lastRide && <span className="normal-case text-gray-400">Last: {dateTime(lastRide)}</span>}
         </p>

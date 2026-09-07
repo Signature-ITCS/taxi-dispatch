@@ -728,7 +728,7 @@ export default function DispatchPage() {
               autoFocus
               value={completing.fare}
               onChange={(e) => setCompleting({ ...completing, fare: e.target.value })}
-              className="mt-1.5 w-full rounded-xl border border-gray-200 px-4 py-3 text-[15px] outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10"
+              className="mt-1.5 w-full rounded-xl border border-gray-200 px-4 py-3 text-base outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 sm:text-[15px]"
             />
             {completing.isCash && (
               <button

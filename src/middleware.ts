@@ -7,6 +7,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // api/webhooks is excluded on purpose: Stripe authenticates with a request
+    // signature, not a session cookie, and the session refresh here would only
+    // add latency and Set-Cookie noise to a machine-to-machine call.
+    "/((?!_next/static|_next/image|api/webhooks|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

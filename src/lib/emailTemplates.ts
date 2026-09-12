@@ -259,3 +259,74 @@ function installButton(url: string, label: string): string {
       </td>
     </tr></table>`;
 }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Payment problems                                                          */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+export type PaymentAlertKind = "unmatched" | "review" | "dispute" | "refunded";
+
+export interface PaymentAlertData {
+  kind: PaymentAlertKind;
+  /** Amount that actually moved, in pounds. */
+  amount: number;
+  paymentIntentId: string;
+  /** Plain-English explanation of what did not line up. */
+  reason: string;
+  bookingNumber?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  receiptUrl?: string | null;
+  /** Admin → Payments page, where staff can refund or attach the payment. */
+  paymentsUrl?: string;
+}
+
+const ALERT_COPY: Record<PaymentAlertKind, { subject: string; heading: string; sub: string }> = {
+  unmatched: {
+    subject: "Payment taken but no booking",
+    heading: "⚠️ Money in, no booking",
+    sub: "A card payment succeeded but no booking was ever saved for it. The customer has been charged and has nothing. Refund it or create the booking manually — today.",
+  },
+  review: {
+    subject: "Card payment needs review",
+    heading: "⚠️ Payment needs review",
+    sub: "A card payment went through but something about it did not line up with the booking. Check it before the driver goes out — the details are below.",
+  },
+  dispute: {
+    subject: "Card payment disputed",
+    heading: "🚨 Chargeback opened",
+    sub: "A customer has disputed a card payment with their bank. Respond in the Stripe Dashboard before the deadline or the money is lost automatically.",
+  },
+  refunded: {
+    subject: "Card payment refunded in Stripe",
+    heading: "Payment refunded",
+    sub: "A refund was issued from the Stripe Dashboard. The booking has been updated to match.",
+  },
+};
+
+/** Internal alert to admin/dispatch when money and bookings disagree. */
+export function paymentAlertEmail(d: PaymentAlertData): { subject: string; html: string } {
+  const copy = ALERT_COPY[d.kind];
+  const html = shell({
+    preheader: `${copy.subject} — ${money(d.amount)} · ${d.paymentIntentId}`,
+    heading: copy.heading,
+    sub: copy.sub,
+    footer: "TaxiFlow Payments",
+    body: `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+        ${row("Amount", money(d.amount), true)}
+        ${row("Stripe intent", `<span style="font-family:monospace;font-size:12px;">${escapeHtml(d.paymentIntentId)}</span>`)}
+        ${d.bookingNumber ? row("Booking", `<span style="font-family:monospace;">${escapeHtml(d.bookingNumber)}</span>`) : ""}
+        ${d.customerName ? row("Customer", escapeHtml(d.customerName)) : ""}
+        ${d.customerEmail ? row("Email", escapeHtml(d.customerEmail)) : ""}
+        ${row("What happened", escapeHtml(d.reason))}
+      </table>
+      ${d.paymentsUrl ? `<div style="margin-top:22px;">${button(d.paymentsUrl, "Open Payments")}</div>` : ""}
+      ${
+        d.receiptUrl
+          ? `<p style="margin:14px 0 0 0;font-size:13px;"><a href="${escapeAttr(d.receiptUrl)}" style="color:#6b7280;">View the Stripe receipt →</a></p>`
+          : ""
+      }`,
+  });
+  return { subject: `${copy.subject} — ${money(d.amount)}`, html };
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Car,
@@ -16,6 +16,7 @@ import {
   CalendarClock,
   CircleDot,
   Repeat,
+  ArrowLeft,
 } from "lucide-react";
 import { money, cn } from "@/lib/format";
 import InstallPWA from "@/components/InstallPWA";
@@ -35,7 +36,15 @@ interface Ride {
   estimated_fare: number;
   payment_method: PaymentMethod;
   scheduled_at: string | null;
-  driver: { name: string; phone: string | null; rating: number; vehicle: string | null; plate: string | null } | null;
+  driver: {
+    name: string;
+    phone: string | null;
+    /** Null for an outside driver — they have no history with us to rate. */
+    rating: number | null;
+    vehicle: string | null;
+    plate: string | null;
+    external?: boolean;
+  } | null;
   rated: boolean;
 }
 
@@ -63,6 +72,23 @@ function stepIndex(status: BookingStatus): number {
     default:
       return -1;
   }
+}
+
+/**
+ * "Back" on a page that is usually opened from an email or SMS link, where
+ * there is nothing to go back to — so it steps back through history only when
+ * this tab actually has some, and otherwise takes the customer to the homepage.
+ */
+function BackButton() {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+      className="mb-1 flex items-center gap-1 px-1 text-sm text-gray-500 transition-colors hover:text-ink-950"
+    >
+      <ArrowLeft className="h-4 w-4" /> Back
+    </button>
+  );
 }
 
 export default function TrackPage() {
@@ -119,6 +145,9 @@ export default function TrackPage() {
         <XCircle className="mb-3 h-12 w-12 text-gray-300" />
         <h1 className="font-display text-xl font-bold text-ink-950">Booking not found</h1>
         <p className="mt-1 text-sm text-gray-500">Check your booking number and try again.</p>
+        <div className="mt-4">
+          <BackButton />
+        </div>
       </main>
     );
   }
@@ -130,6 +159,10 @@ export default function TrackPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-50/40 to-white p-4">
       <div className="mx-auto max-w-md">
+        <div className="pt-2">
+          <BackButton />
+        </div>
+
         {/* Header */}
         <div className="mb-4 flex items-center justify-between px-1 pt-2">
           <div className="flex items-center gap-2.5">
@@ -232,10 +265,17 @@ export default function TrackPage() {
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-ink-950">{ride.driver.name}</p>
-                    <p className="flex items-center gap-1 text-xs text-gray-500">
-                      <Star className="h-3 w-3 fill-brand-400 text-brand-400" /> {Number(ride.driver.rating).toFixed(1)}
-                      {ride.driver.vehicle && ` · ${ride.driver.vehicle}`}
-                    </p>
+                    {ride.driver.rating != null ? (
+                      <p className="flex items-center gap-1 text-xs text-gray-500">
+                        <Star className="h-3 w-3 fill-brand-400 text-brand-400" />{" "}
+                        {Number(ride.driver.rating).toFixed(1)}
+                        {ride.driver.vehicle && ` · ${ride.driver.vehicle}`}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500">
+                        Partner driver{ride.driver.vehicle ? ` · ${ride.driver.vehicle}` : ""}
+                      </p>
+                    )}
                   </div>
                   {ride.driver.phone && (
                     <a href={`tel:${ride.driver.phone}`} className="flex h-11 w-11 items-center justify-center rounded-full bg-brand-500 text-white shadow-md">

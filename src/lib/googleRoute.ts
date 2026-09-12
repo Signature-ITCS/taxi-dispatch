@@ -61,14 +61,20 @@ export async function googleRouteDistance(
 
 /**
  * Trusted distance/duration for a booking leg.
- * When the leg has pickup + dropoff coordinates, distance is recomputed
- * server-side from Google and the client-supplied value is IGNORED.
- * When coordinates are missing (e.g. a staff phone booking with a typed
- * address), the caller-provided value is trusted as a fallback.
+ *
+ * Distance is ALWAYS re-derived from coordinates via Google. The client's own
+ * `distance_km` is only ever honoured when `trustClient` is set, which is
+ * reserved for a signed-in staff member typing a phone booking by hand.
+ *
+ * For anything public this returns null rather than falling back, and the
+ * caller refuses the request. That is deliberate: a request that simply omits
+ * its coordinates used to be priced off `distance_km: 0`, turning a £257
+ * airport run into £15. Refusing to price is the only safe failure here.
  */
 export async function resolveLegDistance(
-  leg: LegInput
-): Promise<{ distance_km: number; duration_min: number }> {
+  leg: LegInput,
+  opts: { trustClient?: boolean } = {}
+): Promise<{ distance_km: number; duration_min: number } | null> {
   const origin: Pt = { lat: leg.pickup_lat, lng: leg.pickup_lng };
   const destination: Pt = { lat: leg.dropoff_lat, lng: leg.dropoff_lng };
   const waypoints: Pt[] = (leg.via_points ?? []).map((v) => ({ lat: v.lat, lng: v.lng }));
@@ -77,6 +83,10 @@ export async function resolveLegDistance(
     const r = await googleRouteDistance(origin, destination, waypoints);
     if (r) return { distance_km: r.km, duration_min: r.min };
   }
+
+  // No coordinates, or Google could not route them.
+  if (!opts.trustClient) return null;
+
   return {
     distance_km: Number(leg.distance_km) || 0,
     duration_min: Number(leg.duration_min) || 0,

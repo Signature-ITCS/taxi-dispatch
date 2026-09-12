@@ -34,9 +34,9 @@ import {
 } from "lucide-react";
 import AddressAutocomplete, { type PlaceValue } from "@/components/booking/AddressAutocomplete";
 import RouteMap, { type RouteLeg } from "@/components/booking/RouteMap";
-import CardPayment from "@/components/booking/CardPayment";
 import { carIcon } from "@/components/booking/CarIcon";
 import { money, isValidPhone } from "@/lib/format";
+import { rememberCheckout, rememberedCheckout, forgetCheckout } from "@/lib/checkoutSession";
 import type { FareBreakdown, PaymentMethod } from "@/lib/types";
 
 interface Quote {
@@ -66,6 +66,64 @@ const empty: PlaceValue = { address: "", lat: null, lng: null };
 const emptyJourney: Journey = { pickup: empty, vias: [], dropoff: empty, km: null, min: null };
 
 const emailValid = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+/**
+ * Leave for Stripe's hosted checkout.
+ *
+ * The widget is often running inside an iframe on a partner's website, and
+ * Stripe (rightly) refuses to render inside one — so the whole browser goes,
+ * not just the frame. If the frame isn't allowed to navigate its parent we fall
+ * back to a new tab rather than stranding the customer on a dead button.
+ */
+const goToStripe = (url: string) => {
+  try {
+    const top = window.top;
+    if (top && top !== window.self) {
+      top.location.href = url;
+      return;
+    }
+  } catch {
+    window.open(url, "_blank", "noopener");
+    return;
+  }
+  window.location.href = url;
+};
+
+/** ISO timestamp → the value a <input type="datetime-local"> expects. */
+const toLocalInput = (iso: string) => {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+interface DraftLeg {
+  pickup_address?: string;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  dropoff_address?: string;
+  dropoff_lat?: number | null;
+  dropoff_lng?: number | null;
+  via_points?: { address?: string; lat?: number | null; lng?: number | null }[];
+  distance_km?: number | null;
+  duration_min?: number | null;
+  scheduled_at?: string | null;
+}
+
+/** Rebuild the form's trip from a parked checkout draft. */
+const journeyFrom = (leg: DraftLeg): Journey => ({
+  pickup: { address: leg.pickup_address ?? "", lat: leg.pickup_lat ?? null, lng: leg.pickup_lng ?? null },
+  vias: (leg.via_points ?? []).map((v) => ({
+    address: v.address ?? "",
+    lat: v.lat ?? null,
+    lng: v.lng ?? null,
+  })),
+  dropoff: { address: leg.dropoff_address ?? "", lat: leg.dropoff_lat ?? null, lng: leg.dropoff_lng ?? null },
+  // `|| null`, not `?? null`: a stored 0 means "we never had a distance", and
+  // null is what makes the widget re-measure the route instead of sitting on a
+  // £0 trip it refuses to quote.
+  km: leg.distance_km || null,
+  min: leg.duration_min || null,
+});
 
 const allCoords = (j: Journey) =>
   j.pickup.lat != null && j.dropoff.lat != null && j.vias.every((v) => v.lat != null);
@@ -149,14 +207,80 @@ export default function BookingWidget({
     fare: number;
     paid: boolean;
     receiptUrl: string | null;
+    /** Card was charged but the booking couldn't be marked paid — staff are on it. */
+    review: string | null;
   } | null>(null);
 
-  // Card payment flow
-  const [cardSecret, setCardSecret] = useState<string | null>(null);
-  const [preparingCard, setPreparingCard] = useState(false);
-  // Set once a card payment has SUCCEEDED. If the booking write then fails, we
-  // retry the booking with this same intent instead of charging the card again.
-  const [paidIntentId, setPaidIntentId] = useState<string | null>(null);
+  // Card payment: we hand off to Stripe's own hosted page rather than taking
+  // card details here, so all this tracks is "we are about to leave the site".
+  const [leaving, setLeaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Category to re-select once quotes come back, when resuming a cancelled checkout.
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+
+  // Coming back from a cancelled Stripe checkout: refill everything the customer
+  // already typed. Nobody should have to enter two addresses and a phone number
+  // twice because they had second thoughts on the payment page.
+  useEffect(() => {
+    // Stripe's "Back" link carries ?resume=; the browser back button carries
+    // nothing, so fall back to what this tab remembered on its way out.
+    const explicit = new URLSearchParams(window.location.search).get("resume");
+    const draftId = explicit ?? rememberedCheckout();
+    if (!draftId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/payment/draft?id=${encodeURIComponent(draftId)}`);
+        const data = await res.json();
+
+        if (!data?.ok) {
+          forgetCheckout();
+          // They actually did pay. Following Stripe's own back link means they
+          // want that ride; arriving here by browser history (or "Book another
+          // ride") does not — leave those with a clean form.
+          if (data?.error === "already_booked" && data.booking_number && explicit) {
+            window.location.replace(`/track/${data.booking_number}`);
+            return;
+          }
+          if (explicit) setNotice("That payment link has expired. Please enter your trip again.");
+          return;
+        }
+
+        const p = data.payload ?? {};
+        setOutbound(journeyFrom(p.outbound ?? {}));
+        if (p.return) {
+          setReturnEnabled(true);
+          setRet(journeyFrom(p.return));
+        }
+        setName(p.name ?? "");
+        setWhatsapp(p.whatsapp ?? "");
+        setEmail(p.email ?? "");
+        setNotes(p.notes ?? "");
+        setChildSeatOn(!!p.child_seat);
+        setPassengers(p.passengers ?? 1);
+        setSuitcases(p.suitcases ?? 0);
+        setHandLuggage(p.hand_luggage ?? 0);
+        setPayment("card");
+        if (p.outbound?.scheduled_at) {
+          setScheduleMode("later");
+          setScheduledAt(toLocalInput(p.outbound.scheduled_at));
+        }
+        if (p.return?.scheduled_at) setReturnAt(toLocalInput(p.return.scheduled_at));
+        setPendingCategory(p.category_id ?? null);
+        // Keep it: they may bounce off the payment page more than once.
+        rememberCheckout(draftId);
+        setNotice(
+          explicit
+            ? "Payment cancelled — your trip is still here. You can pay again whenever you're ready."
+            : "Welcome back — your trip is still here. You can pay whenever you're ready."
+        );
+      } catch {
+        /* a failed restore just means an empty form — not worth an error */
+      } finally {
+        // Drop ?resume= so a refresh doesn't replay this.
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    })();
+  }, []);
 
   const [minDT, setMinDT] = useState("");
   useEffect(() => {
@@ -255,6 +379,19 @@ export default function BookingWidget({
     }
   }, [canQuote, site, outbound, ret, returnEnabled, outAt, retAt]);
 
+  // Finish restoring a cancelled checkout: price the trip again, then drop the
+  // customer straight back on the details step with their car re-selected.
+  useEffect(() => {
+    if (pendingCategory && canQuote && quotes.length === 0 && !loadingQuotes) fetchQuotes();
+  }, [pendingCategory, canQuote, quotes.length, loadingQuotes, fetchQuotes]);
+
+  useEffect(() => {
+    if (!pendingCategory || quotes.length === 0) return;
+    if (quotes.some((q) => q.category_id === pendingCategory)) setSelected(pendingCategory);
+    setStep(2);
+    setPendingCategory(null);
+  }, [pendingCategory, quotes]);
+
   const legPayload = (j: Journey, at: string | null) => ({
     pickup_address: j.pickup.address,
     pickup_lat: j.pickup.lat,
@@ -269,7 +406,7 @@ export default function BookingWidget({
     route_text: routeText(j),
   });
 
-  const bookingPayload = (paymentIntentId?: string) => ({
+  const bookingPayload = () => ({
     site,
     name: name.trim(),
     whatsapp: whatsapp.trim(),
@@ -283,44 +420,45 @@ export default function BookingWidget({
     hand_luggage: handLuggage,
     outbound: legPayload(outbound, outAt),
     return: returnEnabled ? legPayload(ret, retAt) : null,
-    ...(paymentIntentId ? { payment_intent_id: paymentIntentId } : {}),
     ...(customFare != null ? { custom_fare: customFare } : {}),
   });
 
-  // Card: create a PaymentIntent, then reveal the Stripe card form
+  /**
+   * Card: hand off to Stripe Checkout.
+   *
+   * No booking is created yet — the trip is parked server-side and only becomes
+   * a booking once Stripe confirms the payment, so an abandoned checkout leaves
+   * nothing behind. The customer comes back to /booking/complete.
+   */
   const startCardPayment = async () => {
     if (!selected || !name.trim() || !phoneValid || !emailValid(email)) return;
-    // Payment already succeeded on a previous attempt — never charge twice.
-    if (paidIntentId) return submit(paidIntentId);
-    setPreparingCard(true);
+    setLeaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/payment/intent", {
+      const res = await fetch("/api/payment/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          site,
-          category_id: selected,
-          email: email.trim(),
-          child_seat: childSeatOn,
-          outbound: priceLeg(outbound, outAt),
-          return: returnEnabled ? priceLeg(ret, retAt) : null,
-        }),
+        body: JSON.stringify(bookingPayload()),
       });
       const data = await res.json();
-      setPreparingCard(false);
-      if (!data?.ok || !data.client_secret) {
-        setError("Could not start card payment. Please try again or choose Cash.");
+      if (!data?.ok || !data.url) {
+        setLeaving(false);
+        setError(
+          data?.error === "payments_not_configured"
+            ? "Card payments aren't available right now — please choose Cash."
+            : "Could not start the payment. Please try again or choose Cash."
+        );
         return;
       }
-      setCardSecret(data.client_secret);
+      if (data.draft_id) rememberCheckout(data.draft_id);
+      goToStripe(data.url);
     } catch {
-      setPreparingCard(false);
-      setError("Could not start card payment. Please try again or choose Cash.");
+      setLeaving(false);
+      setError("Could not start the payment. Please try again or choose Cash.");
     }
   };
 
-  const submit = async (paymentIntentId?: string) => {
+  const submit = async () => {
     if (!selected || !name.trim() || !phoneValid || !emailValid(email)) return;
     setSubmitting(true);
     setError(null);
@@ -328,25 +466,24 @@ export default function BookingWidget({
       const res = await fetch("/api/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bookingPayload(paymentIntentId)),
+        body: JSON.stringify(bookingPayload()),
       });
       const data = await res.json();
       setSubmitting(false);
       if (!data?.ok || !data.outbound?.ok) {
-        setError(
-          paymentIntentId
-            ? "Payment received, but saving your booking failed. Tap “Complete booking” to retry — you won’t be charged again."
-            : "Booking failed. Please try again."
-        );
+        setError("Booking failed. Please try again.");
         return;
       }
-      setPaidIntentId(null);
+      forgetCheckout();
       setResult({
         outbound: data.outbound.booking_number,
         ret: data.return?.booking_number ?? null,
-        fare: finalTotal || data.outbound.estimated_fare,
+        // The server returns the amount actually charged (it may differ from the
+        // quote if the route re-priced), so prefer it over the local estimate.
+        fare: data.fare ?? (finalTotal || data.outbound.estimated_fare),
         paid: !!data.paid,
         receiptUrl: data.receipt_url ?? null,
+        review: data.payment_review ?? null,
       });
     } catch {
       setSubmitting(false);
@@ -823,47 +960,33 @@ export default function BookingWidget({
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
 
-                {payment === "card" && !manual && cardSecret ? (
-                  <CardPayment
-                    clientSecret={cardSecret}
-                    amountLabel={money(grandTotal)}
-                    onPaid={(pi) => {
-                      setCardSecret(null);
-                      setPaidIntentId(pi);
-                      submit(pi);
-                    }}
-                    onCancel={() => setCardSecret(null)}
-                  />
-                ) : (
-                  <button
-                    disabled={
-                      submitting ||
-                      preparingCard ||
-                      !name.trim() ||
-                      !phoneValid ||
-                      !emailValid(email)
-                    }
-                    onClick={
-                      paidIntentId
-                        ? () => submit(paidIntentId)
-                        : payment === "card" && !manual
-                        ? startCardPayment
-                        : () => submit()
-                    }
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-4 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-all hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-400"
-                  >
-                    {submitting || preparingCard ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : paidIntentId ? (
-                      "Complete booking"
-                    ) : payment === "card" && !manual ? (
-                      <>
-                        <Lock className="h-5 w-5" /> Pay &amp; Book {money(grandTotal)}
-                      </>
-                    ) : (
-                      "Book Ride"
-                    )}
-                  </button>
+                {notice && (
+                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+                    {notice}
+                  </p>
+                )}
+
+                <button
+                  disabled={submitting || leaving || !name.trim() || !phoneValid || !emailValid(email)}
+                  onClick={payment === "card" && !manual ? startCardPayment : submit}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 py-4 text-base font-bold text-white shadow-lg shadow-brand-500/30 transition-all hover:bg-brand-600 disabled:bg-gray-200 disabled:text-gray-400"
+                >
+                  {submitting || leaving ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : payment === "card" && !manual ? (
+                    <>
+                      <Lock className="h-5 w-5" /> Pay &amp; Book {money(grandTotal)}
+                    </>
+                  ) : (
+                    "Book Ride"
+                  )}
+                </button>
+
+                {payment === "card" && !manual && (
+                  <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-gray-400">
+                    <Lock className="h-3 w-3" />
+                    You&apos;ll pay securely on Stripe, then come straight back
+                  </p>
                 )}
               </motion.div>
             )}
@@ -1136,7 +1259,14 @@ function Success({
   result,
   payment,
 }: {
-  result: { outbound: string; ret: string | null; fare: number; paid: boolean; receiptUrl: string | null };
+  result: {
+    outbound: string;
+    ret: string | null;
+    fare: number;
+    paid: boolean;
+    receiptUrl: string | null;
+    review: string | null;
+  };
   payment: PaymentMethod;
 }) {
   return (
@@ -1175,6 +1305,15 @@ function Success({
           )}
         </div>
       </div>
+      {result.review && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left">
+          <p className="text-sm font-semibold text-amber-900">Your payment is with our team</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
+            Your card was charged and your ride is booked, but the payment needs a quick manual check. Our team has
+            already been alerted and will confirm or refund you — you don&apos;t need to pay again or do anything.
+          </p>
+        </div>
+      )}
       {result.receiptUrl && (
         <a
           href={result.receiptUrl}

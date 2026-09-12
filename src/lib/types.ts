@@ -139,6 +139,16 @@ export interface Booking {
   suitcases: number;
   hand_luggage: number;
   driver_id: string | null;
+  /** Outside driver this one ride was handed to. Set instead of driver_id. */
+  external_driver_name: string | null;
+  external_driver_phone: string | null;
+  external_driver_company: string | null;
+  /** The car that outside driver is actually turning up in. */
+  external_vehicle_category_id: string | null;
+  external_vehicle_make: string | null;
+  external_vehicle_model: string | null;
+  external_vehicle_color: string | null;
+  external_vehicle_plate: string | null;
   dispatcher_id: string | null;
   scheduled_at: string | null;
   notes: string | null;
@@ -150,6 +160,28 @@ export interface Booking {
   started_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
+}
+
+export interface Payment {
+  id: string;
+  booking_id: string | null;
+  amount: number;
+  amount_refunded: number;
+  currency: string;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  stripe_payment_intent_id: string | null;
+  receipt_url: string | null;
+  /** Money moved but something did not line up — staff must check it. */
+  needs_review: boolean;
+  review_reason: string | null;
+  failure_reason: string | null;
+  disputed_at: string | null;
+  /** When the "unmatched payment" alert went out. Null = not yet alerted. */
+  alerted_at: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PricingRule {

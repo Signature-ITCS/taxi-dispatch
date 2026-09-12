@@ -26,7 +26,10 @@ async function legQuotes(
 ): Promise<{ quotes: Quote[]; child_seat_price: number } | null> {
   // Recompute distance from coordinates server-side so the quoted price
   // can't be lowered by a client that under-reports distance_km.
-  const { distance_km, duration_min } = await resolveLegDistance(leg);
+  // Public endpoint: coordinates or nothing. See resolveLegDistance().
+  const resolved = await resolveLegDistance(leg);
+  if (!resolved) return null;
+  const { distance_km, duration_min } = resolved;
   const { data } = await callRpc<{ ok: boolean; quotes: Quote[]; child_seat_price?: number }>(
     "quote_fares",
     {

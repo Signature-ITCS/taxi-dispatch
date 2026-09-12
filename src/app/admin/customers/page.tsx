@@ -18,6 +18,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import StatusBadge from "@/components/dashboard/StatusBadge";
+import LoadError from "@/components/dashboard/LoadError";
 import SheetHandle from "@/components/dashboard/SheetHandle";
 import { cn, timeAgo, money, clock, dateTime } from "@/lib/format";
 import type { Customer, Booking } from "@/lib/types";
@@ -27,9 +28,16 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<Customer | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async () => {
-    const { data } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .order("created_at", { ascending: false });
+    // An empty list and a failed query look identical on screen — say which it is.
+    if (error) console.error("[customers] load failed", error);
+    setLoadError(error?.message ?? null);
     setCustomers((data as Customer[]) ?? []);
     setLoading(false);
   };
@@ -47,6 +55,11 @@ export default function CustomersPage() {
   return (
     <div>
       <PageHeader title="Customers" subtitle="Everyone who has booked a ride" />
+      {loadError && (
+        <div className="px-5 pb-4 md:px-8">
+          <LoadError what="customers" detail={loadError} onRetry={load} />
+        </div>
+      )}
       {loading ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
@@ -131,14 +144,17 @@ function CustomerDetailModal({
   const supabase = createClient();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("bookings")
-        .select("*, category:vehicle_categories(name)")
+        .select("*, category:vehicle_categories!bookings_vehicle_category_id_fkey(name)")
         .eq("customer_id", customer.id)
         .order("created_at", { ascending: false });
+      if (error) console.error("[customer bookings] load failed", error);
+      setLoadError(error?.message ?? null);
       setBookings((data as BookingRow[]) ?? []);
       setLoading(false);
     })();
@@ -209,6 +225,8 @@ function CustomerDetailModal({
           <div className="flex h-24 items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-emerald-600" />
           </div>
+        ) : loadError ? (
+          <LoadError what="this customer's bookings" detail={loadError} />
         ) : bookings.length === 0 ? (
           <p className="py-6 text-center text-sm text-gray-400">No bookings yet</p>
         ) : (

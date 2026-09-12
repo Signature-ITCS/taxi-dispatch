@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2,
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
+import LoadError from "@/components/dashboard/LoadError";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import SheetHandle from "@/components/dashboard/SheetHandle";
 import { money, clock, cn } from "@/lib/format";
@@ -40,6 +41,20 @@ interface Row extends Booking {
 
 const FILTERS: (BookingStatus | "all")[] = ["all", "pending", "in_progress", "completed", "cancelled"];
 
+/**
+ * Who drove this job. Rides handed to another company have no `drivers` row —
+ * their name sits on the booking itself, so fall back to that before giving up.
+ */
+function driverLabel(r: Row, fallback: string): string {
+  if (r.driver?.full_name) return r.driver.full_name;
+  if (r.external_driver_name) {
+    return r.external_driver_company
+      ? `${r.external_driver_name} (${r.external_driver_company})`
+      : `${r.external_driver_name} (outside)`;
+  }
+  return fallback;
+}
+
 export default function BookingsPage() {
   const supabase = createClient();
   const [rows, setRows] = useState<Row[]>([]);
@@ -47,20 +62,27 @@ export default function BookingsPage() {
   const [filter, setFilter] = useState<BookingStatus | "all">("all");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<Row | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(
+        "*, category:vehicle_categories!bookings_vehicle_category_id_fkey(name), source:websites(name), driver:drivers(full_name), review:ratings(rating, comment, created_at)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(500);
+    // An empty list and a failed query look identical on screen — say which it is.
+    if (error) console.error("[bookings] load failed", error);
+    setLoadError(error?.message ?? null);
+    setRows((data as Row[]) ?? []);
+    setLoading(false);
+  }, [supabase]);
 
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("bookings")
-        .select(
-          "*, category:vehicle_categories(name), source:websites(name), driver:drivers(full_name), review:ratings(rating, comment, created_at)"
-        )
-        .order("created_at", { ascending: false })
-        .limit(500);
-      setRows((data as Row[]) ?? []);
-      setLoading(false);
-    })();
-  }, [supabase]);
+    load();
+  }, [load]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -83,6 +105,12 @@ export default function BookingsPage() {
       <PageHeader title="Bookings" subtitle="Complete booking history" />
 
       <div className="px-5 pb-10 md:px-8">
+        {loadError && (
+          <div className="mb-4">
+            <LoadError what="bookings" detail={loadError} onRetry={load} />
+          </div>
+        )}
+
         {/* Controls */}
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative min-w-0 flex-1 md:min-w-[200px]">
@@ -154,7 +182,7 @@ export default function BookingsPage() {
                   </p>
                   <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
                     <span className="truncate">
-                      {r.driver?.full_name ?? "No driver"} · {r.source?.name ?? "—"} · {clock(r.created_at)}
+                      {driverLabel(r, "No driver")} · {r.source?.name ?? "—"} · {clock(r.created_at)}
                     </span>
                     <span className="shrink-0 font-display text-sm font-bold text-ink-950">{money(r.estimated_fare)}</span>
                   </div>
@@ -208,7 +236,7 @@ export default function BookingsPage() {
                         <p className="truncate text-ink-950">{r.pickup_address}</p>
                         <p className="truncate text-xs text-gray-400">→ {r.dropoff_address}</p>
                       </td>
-                      <td className="px-3 py-3 text-gray-500">{r.driver?.full_name ?? "—"}</td>
+                      <td className="px-3 py-3 text-gray-500">{driverLabel(r, "—")}</td>
                       <td className="px-3 py-3"><StatusBadge status={r.status} size="xs" /></td>
                       <td className="px-3 py-3 text-right font-display font-bold text-ink-950">{money(r.estimated_fare)}</td>
                       <td className="px-5 py-3 text-right text-xs text-gray-400">{clock(r.created_at)}</td>
@@ -365,7 +393,7 @@ function BookingDetailModal({
             highlight={row.child_seat}
           />
           <DetailRow icon={StickyNote} label="Notes" value={row.notes?.trim() || "—"} />
-          <DetailRow icon={User} label="Driver" value={row.driver?.full_name ?? "Not assigned"} />
+          <DetailRow icon={User} label="Driver" value={driverLabel(row, "Not assigned")} />
         </Section>
 
         {/* Customer rating (shown once the ride is rated) */}

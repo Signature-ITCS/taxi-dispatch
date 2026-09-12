@@ -32,6 +32,9 @@ import {
   StickyNote,
   Check,
   ArrowLeft,
+  ExternalLink,
+  ChevronDown,
+  UserPlus,
   Map as MapIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -39,13 +42,31 @@ import { createClient } from "@/lib/supabase/client";
 import DriverMap from "@/components/dispatch/DriverMap";
 import BookingWidget from "@/components/booking/BookingWidget";
 import StatusBadge from "@/components/dashboard/StatusBadge";
-import { money, timeAgo, cn, normalizeWhatsapp } from "@/lib/format";
+import LoadError from "@/components/dashboard/LoadError";
+import { money, timeAgo, cn, normalizeWhatsapp, isValidPhone } from "@/lib/format";
 import type { Booking, Driver } from "@/lib/types";
 
 interface JobRow extends Booking {
   category?: { name: string } | null;
   source?: { name: string; color: string } | null;
   driver?: { full_name: string } | null;
+}
+
+/** What dispatch types in when handing a ride to another company's driver. */
+interface ExternalDriverInput {
+  name: string;
+  phone: string;
+  company: string;
+  categoryId: string;
+  make: string;
+  model: string;
+  color: string;
+  plate: string;
+}
+
+/** "Silver Toyota Prius" from whatever parts were filled in. */
+function vehicleLabel(parts: { color?: string | null; make?: string | null; model?: string | null }): string {
+  return [parts.color, parts.make, parts.model].map((p) => p?.trim()).filter(Boolean).join(" ");
 }
 
 // A driver is genuinely "on a trip" only once they're actively driving —
@@ -67,6 +88,8 @@ export default function DispatchPage() {
   const supabase = createClient();
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,27 +145,42 @@ export default function DispatchPage() {
   };
 
   const loadJobs = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
       .select(
-        "*, category:vehicle_categories(name), source:websites(name,color), driver:drivers(full_name)"
+        "*, category:vehicle_categories!bookings_vehicle_category_id_fkey(name), source:websites(name,color), driver:drivers(full_name)"
       )
       .in("status", OPEN_STATUSES)
       .order("created_at", { ascending: false });
+    // An empty board and a broken query look identical — and on a dispatch
+    // screen that difference is the whole job. Say which one it is.
+    if (error) console.error("[dispatch] jobs load failed", error);
+    setLoadError(error?.message ?? null);
     setJobs((data as JobRow[]) ?? []);
   }, [supabase]);
 
   const loadDrivers = useCallback(async () => {
-    const { data } = await supabase.from("drivers").select("*").eq("is_blocked", false);
+    const { data, error } = await supabase.from("drivers").select("*").eq("is_blocked", false);
+    if (error) console.error("[dispatch] drivers load failed", error);
     setDrivers((data as Driver[]) ?? []);
+  }, [supabase]);
+
+  // Car classes, for the "which car is the outside driver bringing?" dropdown.
+  const loadCategories = useCallback(async () => {
+    const { data } = await supabase
+      .from("vehicle_categories")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order");
+    setCategories((data as { id: string; name: string }[]) ?? []);
   }, [supabase]);
 
   useEffect(() => {
     (async () => {
-      await Promise.all([loadJobs(), loadDrivers()]);
+      await Promise.all([loadJobs(), loadDrivers(), loadCategories()]);
       setLoading(false);
     })();
-  }, [loadJobs, loadDrivers]);
+  }, [loadJobs, loadDrivers, loadCategories]);
 
   // mark initial ids as known so we don't beep on first load
   useEffect(() => {
@@ -174,10 +212,59 @@ export default function DispatchPage() {
     } = await supabase.auth.getUser();
     await supabase
       .from("bookings")
-      .update({ driver_id: driverId, dispatcher_id: user?.id ?? null, status: "assigned" })
+      .update({
+        driver_id: driverId,
+        // A job belongs to one driver only — taking it back in-house clears
+        // whatever outside driver and car were on it.
+        external_driver_name: null,
+        external_driver_phone: null,
+        external_driver_company: null,
+        external_vehicle_category_id: null,
+        external_vehicle_make: null,
+        external_vehicle_model: null,
+        external_vehicle_color: null,
+        external_vehicle_plate: null,
+        dispatcher_id: user?.id ?? null,
+        status: "assigned",
+      })
       .eq("id", selected.id);
     setAssigning(null);
     loadJobs();
+  };
+
+  /**
+   * Hand this one ride to a driver from another company. Nothing is written to
+   * `drivers` — the details live on the booking, so the outside driver never
+   * shows up in Admin → Drivers, earns no rating and joins no settlement.
+   */
+  const assignExternal = async (d: ExternalDriverInput): Promise<string | null> => {
+    if (!selected) return "No job selected.";
+    setAssigning("external");
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const clean = (v: string) => v.trim() || null;
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        driver_id: null,
+        external_driver_name: d.name.trim(),
+        external_driver_phone: d.phone.trim(),
+        external_driver_company: clean(d.company),
+        external_vehicle_category_id: d.categoryId || null,
+        external_vehicle_make: clean(d.make),
+        external_vehicle_model: clean(d.model),
+        external_vehicle_color: clean(d.color),
+        // Plates are read off a car and typed in a hurry — store them tidy.
+        external_vehicle_plate: d.plate.trim().toUpperCase() || null,
+        dispatcher_id: user?.id ?? null,
+        status: "assigned",
+      })
+      .eq("id", selected.id);
+    setAssigning(null);
+    if (error) return error.message;
+    loadJobs();
+    return null;
   };
 
   const setStatus = async (status: string) => {
@@ -261,6 +348,34 @@ export default function DispatchPage() {
   const assignableDrivers = drivers.filter((d) => d.is_approved && !d.is_blocked);
   const driverCount = assignableDrivers.length;
   const selectedDriver = selected?.driver_id ? drivers.find((d) => d.id === selected.driver_id) : null;
+  // Whoever is on this job right now — one of ours, or an outside driver whose
+  // details live on the booking. The panel below renders from this either way.
+  const activeDriver = selectedDriver
+    ? {
+        name: selectedDriver.full_name,
+        contact: selectedDriver.whatsapp || selectedDriver.phone || null,
+        detail: selectedDriver.service_area,
+        vehicle: null as string | null,
+        plate: null as string | null,
+        external: false,
+      }
+    : selected?.external_driver_name
+    ? {
+        name: selected.external_driver_name,
+        contact: selected.external_driver_phone,
+        detail: selected.external_driver_company,
+        vehicle:
+          vehicleLabel({
+            color: selected.external_vehicle_color,
+            make: selected.external_vehicle_make,
+            model: selected.external_vehicle_model,
+          }) ||
+          categories.find((c) => c.id === selected.external_vehicle_category_id)?.name ||
+          null,
+        plate: selected.external_vehicle_plate,
+        external: true,
+      }
+    : null;
   // The paired leg of a return trip (same trip_group_id), so the dispatcher can
   // see and jump to the outbound/return counterpart.
   const linkedLeg = selected?.trip_group_id
@@ -334,7 +449,8 @@ export default function DispatchPage() {
               ))}
             </div>
             <div className="scroll-thin flex-1 space-y-2 overflow-y-auto p-3">
-              {displayJobs.length === 0 && (
+              {loadError && <LoadError what="jobs" detail={loadError} onRetry={loadJobs} />}
+              {!loadError && displayJobs.length === 0 && (
                 <div className="py-16 text-center text-sm text-gray-400">
                   {view === "scheduled" ? (
                     <CalendarClock className="mx-auto mb-2 h-8 w-8 text-gray-300" />
@@ -572,27 +688,57 @@ export default function DispatchPage() {
                 )}
 
                 {/* Assigned driver → WhatsApp notify + status controls */}
-                {selectedDriver && (
-                  <div className="mb-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+                {activeDriver && (
+                  <div
+                    className={cn(
+                      "mb-3 rounded-xl border p-3",
+                      activeDriver.external ? "border-violet-200 bg-violet-50/50" : "border-brand-200 bg-brand-50/50"
+                    )}
+                  >
                     <div className="mb-2.5 flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500 text-sm font-bold text-white">
-                        {selectedDriver.full_name.charAt(0)}
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white",
+                          activeDriver.external ? "bg-violet-500" : "bg-brand-500"
+                        )}
+                      >
+                        {activeDriver.name.charAt(0)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink-950">{selectedDriver.full_name}</p>
-                        <p className="truncate text-xs text-gray-500">
-                          {selectedDriver.whatsapp || selectedDriver.phone || "No number"}
+                        <p className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-semibold text-ink-950">{activeDriver.name}</span>
+                          {activeDriver.external && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                              <ExternalLink className="h-2.5 w-2.5" /> Outside
+                            </span>
+                          )}
                         </p>
-                        {selectedDriver.service_area && (
-                          <p className="flex items-center gap-1 truncate text-xs text-brand-700">
-                            <MapPin className="h-3 w-3 shrink-0" /> {selectedDriver.service_area}
+                        <p className="truncate text-xs text-gray-500">{activeDriver.contact || "No number"}</p>
+                        {activeDriver.detail && (
+                          <p
+                            className={cn(
+                              "flex items-center gap-1 truncate text-xs",
+                              activeDriver.external ? "text-violet-700" : "text-brand-700"
+                            )}
+                          >
+                            <MapPin className="h-3 w-3 shrink-0" /> {activeDriver.detail}
+                          </p>
+                        )}
+                        {activeDriver.vehicle && (
+                          <p className="flex items-center gap-1 truncate text-xs text-gray-500">
+                            <Car className="h-3 w-3 shrink-0" /> {activeDriver.vehicle}
                           </p>
                         )}
                       </div>
+                      {activeDriver.plate && (
+                        <span className="shrink-0 self-start rounded-md bg-ink-950 px-2 py-1 font-mono text-[11px] font-bold tracking-widest text-white">
+                          {activeDriver.plate}
+                        </span>
+                      )}
                     </div>
 
                     <a
-                      href={waLink(selectedDriver.whatsapp || selectedDriver.phone, selected)}
+                      href={waLink(activeDriver.contact, selected)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-700"
@@ -634,12 +780,13 @@ export default function DispatchPage() {
                 </button>
 
                 <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  <Zap className="h-3.5 w-3.5 text-brand-500" /> {selectedDriver ? "Reassign to" : "Assign a driver"}
+                  <Zap className="h-3.5 w-3.5 text-brand-500" /> {activeDriver ? "Reassign to" : "Assign a driver"}
                 </p>
 
                 {assignableDrivers.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-gray-400">
-                    No drivers yet — add them in Admin → Drivers
+                  <p className="py-6 text-center text-sm text-gray-400">
+                    No drivers of your own yet — add them in Admin → Drivers, or send this job to an outside driver
+                    below.
                   </p>
                 ) : (
                   <div className="space-y-2">
@@ -695,6 +842,14 @@ export default function DispatchPage() {
                     })}
                   </div>
                 )}
+
+                <OutsideDriverPanel
+                  key={selected.id}
+                  busy={assigning === "external"}
+                  categories={categories}
+                  job={selected}
+                  onAssign={assignExternal}
+                />
               </div>
             )}
           </section>
@@ -850,5 +1005,150 @@ function Stat({
         <p className="text-[10px] uppercase tracking-wide text-gray-400">{label}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Send this job to an outside driver."
+ *
+ * For the case where none of our own drivers are free and the ride has to go to
+ * another company. Driver AND car are stored on the BOOKING, so nothing lands in
+ * Admin → Drivers or the vehicles list: no rating, no cash settlement, no record
+ * to clean up afterwards. Next time they must be typed in again — that's the point.
+ */
+function OutsideDriverPanel({
+  busy,
+  categories,
+  job,
+  onAssign,
+}: {
+  busy: boolean;
+  categories: { id: string; name: string }[];
+  job: JobRow;
+  onAssign: (d: ExternalDriverInput) => Promise<string | null>;
+}) {
+  const assigned = !!job.external_driver_name;
+  const [open, setOpen] = useState(assigned);
+  const [form, setForm] = useState<ExternalDriverInput>({
+    name: job.external_driver_name ?? "",
+    phone: job.external_driver_phone ?? "",
+    company: job.external_driver_company ?? "",
+    // Default to the class the customer actually booked and paid for — if a
+    // partner turns up in something else, dispatch changes it here.
+    categoryId: job.external_vehicle_category_id ?? job.vehicle_category_id ?? "",
+    make: job.external_vehicle_make ?? "",
+    model: job.external_vehicle_model ?? "",
+    color: job.external_vehicle_color ?? "",
+    plate: job.external_vehicle_plate ?? "",
+  });
+  const [err, setErr] = useState<string | null>(null);
+
+  const set = (k: keyof ExternalDriverInput) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    if (form.name.trim().length < 2) return setErr("Enter the driver's name.");
+    if (!isValidPhone(form.phone)) return setErr("Enter a valid phone number.");
+    setErr(null);
+    const failure = await onAssign(form);
+    if (failure) setErr(failure);
+  };
+
+  return (
+    <div className="mt-3 rounded-xl border border-dashed border-violet-300 bg-violet-50/40 p-3">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 text-left">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+          <ExternalLink className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-ink-950">Outside driver</span>
+          {assigned && <span className="block truncate text-xs text-gray-500">Currently {job.external_driver_name}</span>}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-gray-400 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          <div className="space-y-2">
+            <Field value={form.name} onChange={set("name")} placeholder="Driver name" />
+            <Field value={form.phone} onChange={set("phone")} placeholder="Phone / WhatsApp number" inputMode="tel" />
+            <Field value={form.company} onChange={set("company")} placeholder="Company (optional)" />
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Vehicle</p>
+            <div className="space-y-2">
+              <select
+                value={form.categoryId}
+                onChange={(e) => set("categoryId")(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-400"
+              >
+                <option value="">Car type</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <Field value={form.make} onChange={set("make")} placeholder="Make (Toyota)" />
+                <Field value={form.model} onChange={set("model")} placeholder="Model (Prius)" />
+                <Field value={form.color} onChange={set("color")} placeholder="Colour (Silver)" />
+                <Field
+                  value={form.plate}
+                  onChange={set("plate")}
+                  placeholder="Plate (LX21 ABC)"
+                  className="uppercase placeholder:normal-case"
+                />
+              </div>
+            </div>
+          </div>
+
+          {err && <p className="text-xs text-red-600">{err}</p>}
+          <button
+            onClick={submit}
+            disabled={busy}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400"
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <UserPlus className="h-4 w-4" /> {assigned ? "Update outside driver" : "Assign to this driver"}
+              </>
+            )}
+          </button>
+          <p className="text-center text-[11px] text-gray-400">
+            Used for this ride only — not saved to your drivers list.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  value,
+  onChange,
+  placeholder,
+  inputMode,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  inputMode?: "tel" | "text";
+  className?: string;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      inputMode={inputMode}
+      className={cn(
+        "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-400",
+        className
+      )}
+    />
   );
 }

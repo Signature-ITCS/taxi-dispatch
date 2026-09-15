@@ -3,7 +3,7 @@ import { getWebsiteKey } from "@/lib/getWebsiteKey";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionProfile } from "@/lib/auth";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
-import { splitFare } from "@/lib/paymentRecord";
+import { splitFare } from "@/lib/fare";
 import {
   validateBookingInput,
   createTrip,

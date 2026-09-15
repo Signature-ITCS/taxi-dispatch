@@ -48,6 +48,8 @@ export async function sweepUnmatchedPayments(origin?: string): Promise<number> {
     const admin = createAdminClient();
     const cutoff = new Date(Date.now() - GRACE_MS).toISOString();
 
+    await releaseStaleClaims(admin, cutoff);
+
     const { data: rows } = await admin
       .from("payments")
       .select("id, booking_id, amount, stripe_payment_intent_id, receipt_url, needs_review, review_reason, created_at")
@@ -89,4 +91,30 @@ export async function sweepUnmatchedPayments(origin?: string): Promise<number> {
     console.error("[payments] sweep failed", err);
   }
   return sent;
+}
+
+/**
+ * Hand back checkout drafts that were claimed but never finished.
+ *
+ * Redeeming a paid checkout claims the draft by moving it to "completing". If
+ * that process then dies — a serverless timeout, a deploy mid-request — the
+ * draft would sit claimed forever and the customer's payment could never become
+ * a booking. Anything still "completing" past the grace period is put back so
+ * the next caller (the customer refreshing, or a webhook retry) can finish it.
+ */
+async function releaseStaleClaims(admin: ReturnType<typeof createAdminClient>, cutoff: string) {
+  const { data, error } = await admin
+    .from("checkout_drafts")
+    .update({ status: "open" })
+    .eq("status", "completing")
+    .is("booking_id", null)
+    .lt("created_at", cutoff)
+    .select("id");
+  if (error) {
+    console.error("[payments] could not release stale checkout claims", error);
+    return;
+  }
+  if (data?.length) {
+    console.warn(`[payments] released ${data.length} stuck checkout draft(s) for retry`);
+  }
 }

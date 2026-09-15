@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWebsiteKey } from "@/lib/getWebsiteKey";
 import { fromMinor } from "@/lib/stripe";
-import { splitFare } from "@/lib/paymentRecord";
+import { splitFare } from "@/lib/fare";
 import { createTrip, notifyBooking, validateBookingInput, type BookingInput } from "@/lib/bookingFlow";
 
 /**

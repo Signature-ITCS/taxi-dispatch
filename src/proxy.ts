@@ -1,7 +1,14 @@
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
-export async function middleware(request: NextRequest) {
+/**
+ * Runs before every matched request: refreshes the Supabase auth cookie and
+ * bounces signed-out visitors away from /admin and /dispatch.
+ *
+ * Named `proxy` because Next 16 renamed the `middleware` file convention to
+ * `proxy`. Same behaviour, same config — only the file and export names moved.
+ */
+export async function proxy(request: NextRequest) {
   return await updateSession(request);
 }
 

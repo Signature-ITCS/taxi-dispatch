@@ -142,8 +142,8 @@ async function onCheckoutExpired(admin: Admin, session: Stripe.Checkout.Session)
  * Money is in. /api/book normally records this within a second or two; when it
  * doesn't (browser closed, network died, our server 500'd) this is the only
  * trace the payment ever existed — so it is written with no booking attached
- * and flagged. The sweep emails staff once the grace period is up, and
- * recordCardPayment() adopts the row if the booking turns up late.
+ * and flagged. The sweep emails staff once the grace period is up, and the row
+ * is adopted if the booking turns up late.
  */
 async function onPaymentSucceeded(admin: Admin, pi: Stripe.PaymentIntent) {
   const amount = fromMinor(pi.amount_received ?? pi.amount ?? 0);

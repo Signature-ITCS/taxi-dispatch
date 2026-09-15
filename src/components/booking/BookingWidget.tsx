@@ -205,10 +205,6 @@ export default function BookingWidget({
     outbound: string;
     ret: string | null;
     fare: number;
-    paid: boolean;
-    receiptUrl: string | null;
-    /** Card was charged but the booking couldn't be marked paid — staff are on it. */
-    review: string | null;
   } | null>(null);
 
   // Card payment: we hand off to Stripe's own hosted page rather than taking
@@ -478,12 +474,8 @@ export default function BookingWidget({
       setResult({
         outbound: data.outbound.booking_number,
         ret: data.return?.booking_number ?? null,
-        // The server returns the amount actually charged (it may differ from the
-        // quote if the route re-priced), so prefer it over the local estimate.
+        // The server's figure wins: it includes any staff price override.
         fare: data.fare ?? (finalTotal || data.outbound.estimated_fare),
-        paid: !!data.paid,
-        receiptUrl: data.receipt_url ?? null,
-        review: data.payment_review ?? null,
       });
     } catch {
       setSubmitting(false);
@@ -1263,9 +1255,6 @@ function Success({
     outbound: string;
     ret: string | null;
     fare: number;
-    paid: boolean;
-    receiptUrl: string | null;
-    review: string | null;
   };
   payment: PaymentMethod;
 }) {
@@ -1296,34 +1285,11 @@ function Success({
         <Row label="Total fare" value={money(result.fare)} />
         <div className="flex items-center justify-between text-sm">
           <span className="text-gray-500">Payment</span>
-          {payment === "card" && result.paid ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Paid by card
-            </span>
-          ) : (
-            <span className="font-semibold text-ink-950">{payment === "cash" ? "Cash to driver" : "Card"}</span>
-          )}
+          {/* A paid-by-card confirmation lives on /booking/complete, not here —
+              this screen is only reached by a booking that is paid later. */}
+          <span className="font-semibold text-ink-950">{payment === "cash" ? "Cash to driver" : "Card"}</span>
         </div>
       </div>
-      {result.review && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left">
-          <p className="text-sm font-semibold text-amber-900">Your payment is with our team</p>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-amber-800">
-            Your card was charged and your ride is booked, but the payment needs a quick manual check. Our team has
-            already been alerted and will confirm or refund you — you don&apos;t need to pay again or do anything.
-          </p>
-        </div>
-      )}
-      {result.receiptUrl && (
-        <a
-          href={result.receiptUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-ink-950 transition-colors hover:bg-gray-50"
-        >
-          <CreditCard className="h-4 w-4" /> View receipt
-        </a>
-      )}
       <a
         href={`/track/${result.outbound}`}
         target="_blank"

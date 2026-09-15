@@ -3,15 +3,13 @@ import { createHash } from "crypto";
 /**
  * Canonical fingerprint of a priced trip.
  *
- * /api/payment/intent stamps this onto the PaymentIntent's metadata; /api/book
- * recomputes it from the booking request and refuses to mark a booking paid
- * unless the two match. That binds one PaymentIntent to one exact trip, so a
- * customer can't pay for a short hop and then redeem that intent against a
- * long airport run — every input that moves the price is in the hash.
+ * /api/payment/checkout stamps this onto the Stripe Checkout session and its
+ * PaymentIntent, and uses it to recognise a repeat "Pay" press for the same
+ * trip so the customer lands back on the SAME checkout instead of opening a
+ * second one.
  *
- * It also lets /api/book trust the amount that was quoted and charged instead
- * of re-deriving the fare from a second Google Directions call, which can drift
- * (traffic, re-routing) and used to leave a paying customer marked unpaid.
+ * Every input that moves the price is in the hash, so two trips that should
+ * cost differently can never share a fingerprint.
  */
 
 export interface SignableLeg {

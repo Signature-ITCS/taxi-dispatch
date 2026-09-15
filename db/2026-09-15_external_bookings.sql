@@ -53,7 +53,9 @@ declare
   v_customer customers%rowtype;
   v_booking  bookings%rowtype;
   v_email    text := nullif(trim(coalesce(p_email, '')), '');
-  v_provider text := nullif(trim(coalesce(p_provider, '')), '');
+  -- Non-null marks the booking as off-platform; the form doesn't ask which
+  -- service was used, so a constant stands in.
+  v_provider text := coalesce(nullif(trim(coalesce(p_provider, '')), ''), 'Outside');
   v_when     timestamptz := coalesce(p_occurred_at, now());
 begin
   if p_customer_name is null or length(trim(p_customer_name)) = 0
@@ -95,11 +97,7 @@ begin
     p_category_id, p_fare,
     -- A finished job's takings are settled, so final_fare is known already.
     case when p_status = 'completed' then p_fare else null end,
-    jsonb_build_object(
-      'total', p_fare,
-      'external', true,
-      'note', coalesce('Arranged through ' || v_provider, 'Entered by staff')
-    ),
+    jsonb_build_object('total', p_fare, 'external', true, 'note', 'Arranged outside the app'),
     p_payment_method, p_payment_status, p_status, p_notes,
     greatest(coalesce(p_passengers, 1), 1),
     v_when, v_provider,

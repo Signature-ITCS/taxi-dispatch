@@ -179,7 +179,7 @@ function Report() {
                 </Td>
                 <Td>
                   {r.driver?.full_name ??
-                    (r.external_provider ? <span className="italic">via {r.external_provider}</span> : "—")}
+                    (r.external_provider ? <span className="italic">Outside job</span> : "—")}
                 </Td>
                 <Td className="whitespace-nowrap capitalize">{r.status.replace("_", " ")}</Td>
                 <Td className="whitespace-nowrap capitalize">

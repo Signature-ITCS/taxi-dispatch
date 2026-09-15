@@ -50,7 +50,7 @@ const FILTERS: (BookingStatus | "all")[] = ["all", "pending", "in_progress", "co
  */
 function driverLabel(r: Row, fallback: string): string {
   if (r.driver?.full_name) return r.driver.full_name;
-  if (r.external_provider) return `via ${r.external_provider}`;
+  if (r.external_provider) return "Outside job";
   if (r.external_driver_name) {
     return r.external_driver_company
       ? `${r.external_driver_name} (${r.external_driver_company})`
@@ -540,7 +540,7 @@ function BookingDetailModal({
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400">Status</p>
             <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5">
               <p className="mb-2 text-[13px] text-violet-900">
-                Arranged through <b>{row.external_provider}</b> — set where this job got to.
+                This job was arranged outside the app, so there is no driver moving it along — set where it got to.
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {(["pending", "in_progress", "completed", "cancelled"] as BookingStatus[]).map((v) => (

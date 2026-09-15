@@ -77,7 +77,10 @@ export async function POST(req: Request) {
     p_status: status,
     p_payment_method: method,
     p_payment_status: payStatus,
-    p_provider: String(b.provider ?? "").trim() || null,
+    // A non-null provider is what marks a booking as off-platform. The form
+    // no longer asks which service was used — it changed nothing about the
+    // money or the accounting — so a constant marker does the job.
+    p_provider: "Outside",
     p_email: String(b.email ?? "").trim() || null,
     p_category_id: b.category_id || null,
     p_notes: String(b.notes ?? "").trim() || null,
@@ -97,11 +100,8 @@ export async function POST(req: Request) {
     actor_name: me.full_name,
     actor_role: me.role,
     action: "external_booking_added",
-    description:
-      `Added off-platform booking ${result.booking_number}` +
-      (b.provider ? ` (via ${String(b.provider).trim()})` : "") +
-      ` — ${name}, ${fare.toFixed(2)}`,
-    metadata: { fare, provider: b.provider ?? null, status, occurred_at: occurredAt.toISOString() },
+    description: `Added outside booking ${result.booking_number} — ${name}, ${fare.toFixed(2)}`,
+    metadata: { fare, status, occurred_at: occurredAt.toISOString() },
   });
 
   return NextResponse.json(result);

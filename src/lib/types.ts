@@ -139,6 +139,8 @@ export interface Booking {
   suitcases: number;
   hand_luggage: number;
   driver_id: string | null;
+  /** Outside service this job was arranged through (Uber, Bolt, a partner firm). */
+  external_provider: string | null;
   /** Outside driver this one ride was handed to. Set instead of driver_id. */
   external_driver_name: string | null;
   external_driver_phone: string | null;

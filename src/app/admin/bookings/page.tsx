@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import {
   Loader2,
   Search,
+  FileDown,
+  ExternalLink,
   ClipboardList,
   X,
   User,
@@ -26,6 +28,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PageHeader from "@/components/admin/PageHeader";
 import LoadError from "@/components/dashboard/LoadError";
+import ExternalBookingModal from "@/components/dashboard/ExternalBookingModal";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import SheetHandle from "@/components/dashboard/SheetHandle";
 import { money, clock, cn } from "@/lib/format";
@@ -47,6 +50,7 @@ const FILTERS: (BookingStatus | "all")[] = ["all", "pending", "in_progress", "co
  */
 function driverLabel(r: Row, fallback: string): string {
   if (r.driver?.full_name) return r.driver.full_name;
+  if (r.external_provider) return `via ${r.external_provider}`;
   if (r.external_driver_name) {
     return r.external_driver_company
       ? `${r.external_driver_name} (${r.external_driver_company})`
@@ -63,6 +67,8 @@ export default function BookingsPage() {
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<Row | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showExternal, setShowExternal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,7 +108,27 @@ export default function BookingsPage() {
 
   return (
     <div>
-      <PageHeader title="Bookings" subtitle="Complete booking history" />
+      <PageHeader
+        title="Bookings"
+        subtitle="Complete booking history"
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowReport(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:text-ink-950"
+            >
+              <FileDown className="h-4 w-4" /> <span className="hidden sm:inline">Report</span>
+            </button>
+            <button
+              onClick={() => setShowExternal(true)}
+              title="A job you arranged on Uber or with a partner firm"
+              className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100"
+            >
+              <ExternalLink className="h-4 w-4" /> <span className="hidden sm:inline">Outside job</span>
+            </button>
+          </div>
+        }
+      />
 
       <div className="px-5 pb-10 md:px-8">
         {loadError && (
@@ -182,6 +208,11 @@ export default function BookingsPage() {
                   </p>
                   <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
                     <span className="truncate">
+                      {r.external_provider && (
+                        <span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                          Outside
+                        </span>
+                      )}
                       {driverLabel(r, "No driver")} · {r.source?.name ?? "—"} · {clock(r.created_at)}
                     </span>
                     <span className="shrink-0 font-display text-sm font-bold text-ink-950">{money(r.estimated_fare)}</span>
@@ -236,7 +267,14 @@ export default function BookingsPage() {
                         <p className="truncate text-ink-950">{r.pickup_address}</p>
                         <p className="truncate text-xs text-gray-400">→ {r.dropoff_address}</p>
                       </td>
-                      <td className="px-3 py-3 text-gray-500">{driverLabel(r, "—")}</td>
+                      <td className="px-3 py-3 text-gray-500">
+                        {r.external_provider && (
+                          <span className="mr-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700">
+                            Outside
+                          </span>
+                        )}
+                        {driverLabel(r, "—")}
+                      </td>
                       <td className="px-3 py-3"><StatusBadge status={r.status} size="xs" /></td>
                       <td className="px-3 py-3 text-right font-display font-bold text-ink-950">{money(r.estimated_fare)}</td>
                       <td className="px-5 py-3 text-right text-xs text-gray-400">{clock(r.created_at)}</td>
@@ -254,6 +292,12 @@ export default function BookingsPage() {
         )}
       </div>
 
+      {showExternal && (
+        <ExternalBookingModal onClose={() => setShowExternal(false)} onSaved={() => load()} />
+      )}
+
+      {showReport && <ReportModal onClose={() => setShowReport(false)} currentStatus={filter} />}
+
       {detail && (
         <BookingDetailModal
           row={detail}
@@ -266,6 +310,9 @@ export default function BookingsPage() {
           onRefunded={(id) =>
             setRows((rs) => rs.map((x) => (x.id === id ? { ...x, payment_status: "refunded" } : x)))
           }
+          onStatusChanged={(id, status) =>
+            setRows((rs) => rs.map((x) => (x.id === id ? { ...x, status } : x)))
+          }
         />
       )}
     </div>
@@ -277,17 +324,40 @@ function BookingDetailModal({
   linked,
   onClose,
   onRefunded,
+  onStatusChanged,
 }: {
   row: Row;
   linked?: Row | null;
   onClose: () => void;
   onRefunded: (id: string) => void;
+  onStatusChanged: (id: string, status: BookingStatus) => void;
 }) {
   const vias = (row.via_points ?? []).filter((v) => v.address);
   const review = row.review?.[0] ?? null;
   const [payStatus, setPayStatus] = useState<string>(row.payment_status);
   const [refunding, setRefunding] = useState(false);
   const [refundErr, setRefundErr] = useState<string | null>(null);
+  // Off-platform jobs have no driver and no dispatch flow moving them along, so
+  // their status is whatever the office says it is.
+  const [status, setStatus] = useState<BookingStatus>(row.status);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusErr, setStatusErr] = useState<string | null>(null);
+
+  const changeStatus = async (next: BookingStatus) => {
+    const previous = status;
+    setStatus(next);
+    setSavingStatus(true);
+    setStatusErr(null);
+    const supabase = createClient();
+    const { error } = await supabase.from("bookings").update({ status: next }).eq("id", row.id);
+    setSavingStatus(false);
+    if (error) {
+      setStatus(previous);
+      setStatusErr("Could not update the status. Please try again.");
+      return;
+    }
+    onStatusChanged(row.id, next);
+  };
 
   const refund = async () => {
     if (!confirm(`Refund ${money(row.estimated_fare)} to ${row.customer_name}?`)) return;
@@ -464,6 +534,36 @@ function BookingDetailModal({
           </div>
           {refundErr && <p className="mt-2 text-xs text-red-600">{refundErr}</p>}
         </div>
+
+        {row.external_provider && (
+          <div className="mb-1">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400">Status</p>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5">
+              <p className="mb-2 text-[13px] text-violet-900">
+                Arranged through <b>{row.external_provider}</b> — set where this job got to.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(["pending", "in_progress", "completed", "cancelled"] as BookingStatus[]).map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => changeStatus(v)}
+                    disabled={savingStatus || status === v}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold capitalize transition-colors",
+                      status === v
+                        ? "border-violet-500 bg-violet-600 text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    )}
+                  >
+                    {v.replace("_", " ")}
+                  </button>
+                ))}
+                {savingStatus && <Loader2 className="h-4 w-4 animate-spin self-center text-violet-600" />}
+              </div>
+              {statusErr && <p className="mt-2 text-xs text-red-600">{statusErr}</p>}
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   );
@@ -498,6 +598,89 @@ function DetailRow({
       <span className={cn("min-w-0 flex-1 break-words", highlight ? "font-semibold text-brand-700" : "text-ink-950")}>
         {value}
       </span>
+    </div>
+  );
+}
+
+/**
+ * Date range for the printable report.
+ *
+ * Defaults to this month, which is what someone reaching for a report almost
+ * always wants. The report itself opens in a new tab and puts up the print
+ * dialog; "Save as PDF" there is the download.
+ */
+function ReportModal({ onClose, currentStatus }: { onClose: () => void; currentStatus: BookingStatus | "all" }) {
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  const [from, setFrom] = useState(iso(firstOfMonth));
+  const [to, setTo] = useState(iso(today));
+  const [status, setStatus] = useState<BookingStatus | "all">(currentStatus);
+
+  const open = () => {
+    const qs = new URLSearchParams({ from, to, status });
+    window.open(`/admin/bookings/print?${qs}`, "_blank", "noopener");
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full rounded-t-3xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-xl sm:max-w-sm sm:rounded-2xl sm:pb-5"
+      >
+        <h3 className="font-display text-lg font-bold text-ink-950">Bookings report</h3>
+        <p className="mt-0.5 text-sm text-gray-500">Opens a printable page — choose “Save as PDF” to download it.</p>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-gray-500">From</span>
+            <input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] text-gray-500">To</span>
+            <input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+            />
+          </label>
+        </div>
+
+        <label className="mt-3 block">
+          <span className="mb-1 block text-[11px] text-gray-500">Status</span>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as BookingStatus | "all")}
+            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm capitalize outline-none focus:border-emerald-400"
+          >
+            {FILTERS.map((f) => (
+              <option key={f} value={f}>
+                {f === "all" ? "All statuses" : f.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <button
+          onClick={open}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-ink-950 py-3 text-sm font-bold text-white hover:bg-ink-800"
+        >
+          <FileDown className="h-4 w-4" /> Open report
+        </button>
+        <button onClick={onClose} className="mt-2 w-full rounded-xl border border-gray-200 py-2.5 text-sm text-gray-600 hover:bg-gray-50">
+          Cancel
+        </button>
+      </motion.div>
     </div>
   );
 }

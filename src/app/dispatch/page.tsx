@@ -42,6 +42,7 @@ import { createClient } from "@/lib/supabase/client";
 import DriverMap from "@/components/dispatch/DriverMap";
 import BookingWidget from "@/components/booking/BookingWidget";
 import StatusBadge from "@/components/dashboard/StatusBadge";
+import ExternalBookingModal from "@/components/dashboard/ExternalBookingModal";
 import LoadError from "@/components/dashboard/LoadError";
 import { money, timeAgo, cn, normalizeWhatsapp, isValidPhone } from "@/lib/format";
 import type { Booking, Driver } from "@/lib/types";
@@ -94,6 +95,7 @@ export default function DispatchPage() {
   const [assigning, setAssigning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showManual, setShowManual] = useState(false);
+  const [showExternal, setShowExternal] = useState(false);
   const [view, setView] = useState<"live" | "scheduled">("live");
   // Phone-only: route map inside the job-details sheet (desktop has the centre map)
   const [showMap, setShowMap] = useState(false);
@@ -405,6 +407,14 @@ export default function DispatchPage() {
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <Stat icon={Inbox} label="Pending" value={pendingCount} tone="amber" />
           <Stat icon={Users} label="Drivers" value={driverCount} tone="green" className="hidden sm:flex" />
+          <button
+            onClick={() => setShowExternal(true)}
+            aria-label="Add an outside booking"
+            title="A job you arranged on Uber or with a partner firm"
+            className="flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100 sm:px-4"
+          >
+            <ExternalLink className="h-4 w-4" /> <span className="hidden sm:inline">Outside job</span>
+          </button>
           <button
             onClick={() => setShowManual(true)}
             aria-label="New booking"
@@ -857,6 +867,13 @@ export default function DispatchPage() {
       )}
 
       {showManual && <ManualBookingModal onClose={() => setShowManual(false)} />}
+
+      {showExternal && (
+        <ExternalBookingModal
+          onClose={() => setShowExternal(false)}
+          onSaved={() => loadJobs()}
+        />
+      )}
 
       {completing && (
         <div

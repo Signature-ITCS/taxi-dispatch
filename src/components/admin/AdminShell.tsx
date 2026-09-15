@@ -50,7 +50,7 @@ export default function AdminShell({
   return (
     <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-gray-200 bg-white md:flex">
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-gray-200 bg-white md:flex print:hidden">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
             <ShieldCheck className="h-5 w-5 text-white" strokeWidth={2.3} />
@@ -102,7 +102,7 @@ export default function AdminShell({
       </aside>
 
       {/* Main */}
-      <main className="flex-1 md:ml-60">{children}</main>
+      <main className="flex-1 md:ml-60 print:ml-0">{children}</main>
     </div>
   );
 }

@@ -100,7 +100,7 @@ export default function PaymentsPage() {
     <div>
       <PageHeader
         title="Payments"
-        subtitle="Every card payment Stripe has taken, and anything that needs a human"
+        subtitle="Every payment taken — card through Stripe, cash collected by drivers"
         action={
           <button
             onClick={load}
@@ -192,7 +192,11 @@ function Tile({ label, value, tone }: { label: string; value: string; tone: stri
 function PaymentCard({ p, index, onChanged }: { p: Payment; index: number; onChanged: () => void }) {
   const refundedSoFar = Number(p.amount_refunded ?? 0);
   const remaining = Math.round((Number(p.amount) - refundedSoFar) * 100) / 100;
-  const canRefund = p.status === "paid" && remaining > 0;
+  // Only a Stripe charge can be sent back through Stripe. Cash was handed to a
+  // driver, so there is nothing here to reverse — offering a button that can
+  // only fail would be worse than offering none.
+  const isCard = p.method === "card" && !!p.stripe_payment_intent_id;
+  const canRefund = isCard && p.status === "paid" && remaining > 0;
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState(String(remaining.toFixed(2)));
@@ -259,6 +263,9 @@ function PaymentCard({ p, index, onChanged }: { p: Payment; index: number; onCha
                 {money(refundedSoFar)} refunded
               </span>
             )}
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-gray-600">
+              {p.method}
+            </span>
             {p.disputed_at && (
               <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">
                 disputed

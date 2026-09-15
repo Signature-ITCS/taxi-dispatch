@@ -105,6 +105,15 @@ begin
     case when p_status = 'cancelled' then v_when else null end
   ) returning * into v_booking;
 
+  -- Money that has already been collected belongs in the payments ledger, the
+  -- same as a cash ride closed by a dispatcher or a card ride paid on Stripe.
+  -- Without this an outside job counted in revenue but appeared nowhere in
+  -- Payments, and the two screens disagreed.
+  if p_payment_status = 'paid' then
+    insert into payments(booking_id, amount, method, status)
+    values (v_booking.id, p_fare, p_payment_method, 'paid');
+  end if;
+
   -- The "ride completed" trigger only fires on UPDATE, so a job entered as
   -- already-completed would never be counted on the customer's record.
   if p_status = 'completed' then

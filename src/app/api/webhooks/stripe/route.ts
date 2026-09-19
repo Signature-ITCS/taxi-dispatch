@@ -110,6 +110,33 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
+/**
+ * Does this payment belong to THIS app?
+ *
+ * One Stripe account can serve several businesses, and a webhook endpoint is
+ * sent every event of its type on that account — not only the ones we caused.
+ * Without this check another site's takings would land in this app's ledger as
+ * "unmatched", and its staff would be emailed about money that was never theirs.
+ *
+ * Everything we start carries the draft it came from; anything already in our
+ * own tables is ours by definition.
+ */
+async function isOurPayment(
+  admin: Admin,
+  intentId: string | null | undefined,
+  metadata?: Stripe.Metadata | null
+): Promise<boolean> {
+  if (typeof metadata?.draft_id === "string" && metadata.draft_id.trim()) return true;
+  if (!intentId) return false;
+
+  const [draft, payment, booking] = await Promise.all([
+    admin.from("checkout_drafts").select("id").eq("payment_intent_id", intentId).maybeSingle(),
+    admin.from("payments").select("id").eq("stripe_payment_intent_id", intentId).maybeSingle(),
+    admin.from("bookings").select("id").eq("stripe_payment_intent_id", intentId).limit(1).maybeSingle(),
+  ]);
+  return !!(draft.data || payment.data || booking.data);
+}
+
 /* ── handlers ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -148,6 +175,8 @@ async function onCheckoutExpired(admin: Admin, session: Stripe.Checkout.Session)
 async function onPaymentSucceeded(admin: Admin, pi: Stripe.PaymentIntent) {
   const amount = fromMinor(pi.amount_received ?? pi.amount ?? 0);
   if (amount <= 0) return;
+  // Another business on the same Stripe account — not our money, not our row.
+  if (!(await isOurPayment(admin, pi.id, pi.metadata))) return;
 
   const { data: existing } = await admin
     .from("payments")
@@ -206,6 +235,7 @@ async function onPaymentSucceeded(admin: Admin, pi: Stripe.PaymentIntent) {
 
 /** A declined or abandoned attempt. Useful for support ("my card was refused"). */
 async function onPaymentFailed(admin: Admin, pi: Stripe.PaymentIntent) {
+  if (!(await isOurPayment(admin, pi.id, pi.metadata))) return;
   const reason = pi.last_payment_error?.message ?? "Payment failed";
   const { data: existing } = await admin
     .from("payments")
@@ -281,6 +311,9 @@ async function onChargeRefunded(admin: Admin, charge: Stripe.Charge) {
 /** A chargeback. There is a deadline to respond, so this one emails immediately. */
 async function onDisputeOpened(admin: Admin, dispute: Stripe.Dispute, origin: string) {
   const piId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id;
+  // A chargeback against another site on this account is their problem to
+  // answer, and waking this office at 2am about it helps nobody.
+  if (!(await isOurPayment(admin, piId))) return;
   const amount = fromMinor(dispute.amount ?? 0);
 
   if (piId) {

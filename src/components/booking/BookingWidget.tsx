@@ -37,6 +37,7 @@ import RouteMap, { type RouteLeg } from "@/components/booking/RouteMap";
 import { carIcon } from "@/components/booking/CarIcon";
 import { money, isValidPhone } from "@/lib/format";
 import { rememberCheckout, rememberedCheckout, forgetCheckout } from "@/lib/checkoutSession";
+import { cardPaymentsEnabled } from "@/lib/paymentMethods";
 import type { FareBreakdown, PaymentMethod } from "@/lib/types";
 
 interface Quote {
@@ -344,6 +345,14 @@ export default function BookingWidget({
   const canQuote = outReady && retReady && timeReady;
   const phoneValid = isValidPhone(whatsapp);
 
+  // Card is closed to the public until it is explicitly switched on. Staff
+  // taking a phone booking keep it, because they collect that payment
+  // themselves — it never goes near Stripe.
+  const cardOffered = manual || cardPaymentsEnabled();
+  useEffect(() => {
+    if (!cardOffered && payment === "card") setPayment("cash");
+  }, [cardOffered, payment]);
+
   const fetchQuotes = useCallback(async () => {
     if (!canQuote) return;
     setLoadingQuotes(true);
@@ -440,7 +449,7 @@ export default function BookingWidget({
       if (!data?.ok || !data.url) {
         setLeaving(false);
         setError(
-          data?.error === "payments_not_configured"
+          data?.error === "payments_not_configured" || data?.error === "card_disabled"
             ? "Card payments aren't available right now — please choose Cash."
             : "Could not start the payment. Please try again or choose Cash."
         );
@@ -859,6 +868,11 @@ export default function BookingWidget({
                   <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Payment
                   </span>
+                  {!cardOffered ? (
+                    <div className="flex items-center gap-2.5 rounded-xl border-2 border-brand-500 bg-brand-50/60 py-3 pl-4 text-sm font-medium text-ink-950">
+                      <Banknote className="h-5 w-5 text-brand-600" /> Cash to driver
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-2 gap-2.5">
                     {(
                       [
@@ -879,6 +893,7 @@ export default function BookingWidget({
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
 
                 {selectedQuote && (

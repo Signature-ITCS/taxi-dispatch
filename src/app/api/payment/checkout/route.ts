@@ -7,6 +7,7 @@ import { priceTrip } from "@/lib/pricing";
 import { quoteSignature } from "@/lib/quoteSignature";
 import { validateBookingInput, type BookingInput } from "@/lib/bookingFlow";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
+import { cardPaymentsEnabled } from "@/lib/paymentMethods";
 import { draftCookieValue } from "@/lib/draftCookie";
 
 /**
@@ -22,6 +23,12 @@ export async function POST(req: Request) {
   // session — cap per IP so it can't be scripted to run up bills.
   if (!rateLimit(`checkout:${clientIp(req)}`, 20, 60_000)) {
     return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
+
+  // A hidden button is not a rule — refuse here too, or a crafted request could
+  // still start a checkout the site is deliberately not offering.
+  if (!cardPaymentsEnabled()) {
+    return NextResponse.json({ ok: false, error: "card_disabled" });
   }
 
   const stripe = await getStripe();

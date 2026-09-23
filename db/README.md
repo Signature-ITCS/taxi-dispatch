@@ -7,20 +7,23 @@ On a brand-new, empty Supabase project, run these in the SQL editor **in order**
 1. `00_schema.sql` — types, tables, keys, indexes, helper and trigger functions
 2. `01_functions.sql` — pricing, booking, tracking, cash, reporting; triggers; row-level security
 3. `2026-09-15_external_bookings.sql` — adds `create_external_booking()`
+4. `02_seed.sql` — car classes, distance bands, surcharges, default settings
 
 That's it. `00` and `01` are a full snapshot of the database as it stood on
 2026-09-23, so the other dated files below are already folded into them — you do
 not need to run them on a fresh project (they are idempotent, so running them
 does no harm either).
 
-Then, before the app will work:
+Then two things `02_seed.sql` deliberately leaves out, because they belong to
+whoever runs this particular instance:
 
-- Create the first admin: sign the user up through Supabase Auth, then
+- **The first admin.** Sign the user up through Supabase Auth, then
   `insert into profiles (id, full_name, email, role) values ('<auth user id>', 'Admin', 'you@example.com', 'admin');`
-- Add at least one row to `websites` (the widget sends its `api_key`)
-- Add `vehicle_categories` and their `pricing_bands`, or nothing can be priced
-- Seed `app_settings` — at minimum the `company` (timezone) and
-  `child_seat_price` keys, which the pricing functions read
+- **A website row.** `insert into websites (name, slug) values ('Main Website', 'main');`
+  then read back its generated `api_key` and put it in `WIDGET_API_KEY`.
+
+Car classes, pricing and settings all arrive with the seed, so the widget can
+quote a fare as soon as those two rows exist.
 
 ## Why 00_schema.sql exists
 

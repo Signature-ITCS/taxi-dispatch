@@ -2,20 +2,6 @@ import type { BookingStatus } from "./types";
 
 export const CURRENCY_SYMBOL = "£";
 
-/**
- * The name customers see: on the tracking page, the booking widget, the
- * "install the app" page and the browser tab.
- *
- * "TaxiFlow" is the name of the software, not of the firm running it, so it
- * has no business appearing to a passenger. Each deployment sets its own name
- * through NEXT_PUBLIC_BRAND_NAME; the old name remains the fallback so an
- * instance that has not set one keeps working rather than showing a blank.
- *
- * Staff-facing screens are deliberately left alone -- the dispatch and admin
- * sidebars still say TaxiFlow, which is accurate for the people running it.
- */
-export const BRAND = process.env.NEXT_PUBLIC_BRAND_NAME || "TaxiFlow";
-
 /** Display label + color for each booking status (used across dashboards). */
 export const STATUS_META: Record<
   BookingStatus,

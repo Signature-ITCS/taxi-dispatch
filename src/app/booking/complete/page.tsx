@@ -7,7 +7,6 @@ import { CheckCircle2, Loader2, MapPin, CreditCard, XCircle, Car } from "lucide-
 import InstallPWA from "@/components/InstallPWA";
 import { money } from "@/lib/format";
 import { forgetCheckout } from "@/lib/checkoutSession";
-import { BRAND } from "@/lib/constants";
 
 interface Result {
   ok: boolean;
@@ -216,7 +215,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500">
             <Car className="h-5 w-5 text-white" strokeWidth={2.3} />
           </div>
-          <span className="font-display text-base font-bold text-ink-950">{BRAND}</span>
+          <span className="font-display text-base font-bold text-ink-950">TaxiFlow</span>
         </div>
         <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">{children}</div>
       </div>

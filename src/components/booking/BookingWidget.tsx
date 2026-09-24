@@ -39,6 +39,7 @@ import { money, isValidPhone } from "@/lib/format";
 import { rememberCheckout, rememberedCheckout, forgetCheckout } from "@/lib/checkoutSession";
 import { cardPaymentsEnabled } from "@/lib/paymentMethods";
 import type { FareBreakdown, PaymentMethod } from "@/lib/types";
+import { BRAND } from "@/lib/constants";
 
 interface Quote {
   category_id: string;
@@ -1001,7 +1002,7 @@ export default function BookingWidget({
         </div>
 
         {!manual && (
-          <p className="mt-4 text-center text-xs text-gray-400">Secured booking · Powered by TaxiFlow</p>
+          <p className="mt-4 text-center text-xs text-gray-400">Secured booking · Powered by {BRAND}</p>
         )}
       </div>
     </main>

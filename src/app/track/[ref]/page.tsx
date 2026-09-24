@@ -21,6 +21,7 @@ import {
 import { money, cn, dateTimeWithDay } from "@/lib/format";
 import InstallPWA from "@/components/InstallPWA";
 import type { BookingStatus, PaymentMethod } from "@/lib/types";
+import { BRAND } from "@/lib/constants";
 
 interface Ride {
   ok: boolean;
@@ -334,7 +335,7 @@ export default function TrackPage() {
         <InstallPWA />
 
         <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-gray-400">
-          <Clock className="h-3 w-3" /> Updates automatically · TaxiFlow
+          <Clock className="h-3 w-3" /> Updates automatically · {BRAND}
         </p>
       </div>
     </main>

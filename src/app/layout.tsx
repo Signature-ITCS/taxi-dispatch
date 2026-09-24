@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import { BRAND } from "@/lib/constants";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -17,7 +18,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "TaxiFlow — Booking & Dispatch",
+  title: `${BRAND} — Booking & Dispatch`,
   description: "Multi-website taxi booking and dispatch system",
   manifest: "/manifest.webmanifest",
   icons: {

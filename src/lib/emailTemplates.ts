@@ -3,6 +3,7 @@
  * Uses table layout + inline styles so it renders in Gmail / Outlook / Apple Mail.
  */
 import { money } from "./format";
+import { BRAND as BRAND_NAME } from "./constants";
 
 export interface BookingEmailData {
   bookingNumber: string;
@@ -119,7 +120,7 @@ function button(url: string, label: string): string {
 
 /** Customer-facing "Booking confirmed" email with a Track button. */
 export function customerConfirmationEmail(d: BookingEmailData): { subject: string; html: string } {
-  const site = d.siteName || "TaxiFlow";
+  const site = d.siteName || BRAND_NAME;
   const html = shell({
     preheader: `Your booking ${d.bookingNumber} is confirmed.`,
     heading: "Booking confirmed 🎉",
@@ -193,7 +194,7 @@ export interface StaffWelcomeData {
  * button (→ /install page, which triggers the PWA install prompt).
  */
 export function staffWelcomeEmail(d: StaffWelcomeData): { subject: string; html: string } {
-  const site = d.siteName || "TaxiFlow";
+  const site = d.siteName || BRAND_NAME;
   const first = escapeHtml(d.fullName.split(" ")[0] || "there");
   const roleLabel = d.role === "admin" ? "Administrator" : "Dispatcher";
   const area = d.role === "admin" ? "admin panel" : "dispatch board";

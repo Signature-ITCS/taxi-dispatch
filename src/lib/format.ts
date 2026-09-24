@@ -20,20 +20,66 @@ export function timeAgo(iso: string | null | undefined): string {
   return `${d}d ago`;
 }
 
+/**
+ * Every time in the app is shown the British way: 24-hour clock, day before
+ * month, UK time.
+ *
+ * Both halves have to be stated. Leave the locale out and the browser decides,
+ * so the same pickup reads "14:05" for a dispatcher in London and "2:05:00 PM"
+ * on a US laptop. Leave the time zone out and the viewer's own clock decides,
+ * so an owner working from abroad sees UK pickups shifted into local time and
+ * could send a driver hours early. The server already pins Europe/London when
+ * it writes emails and SMS; these keep every screen agreeing with them.
+ *
+ * `hourCycle: "h23"` rather than `hour12: false` — the latter can render
+ * midnight as "24:00" instead of "00:00".
+ */
+const LOCALE = "en-GB";
+const TZ = "Europe/London";
+const TIME = { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TZ } as const;
+
 /** Format a clock time, e.g. "14:05". */
 export function clock(iso: string | null | undefined): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(LOCALE, TIME);
 }
 
 /** Format a date + time, e.g. "23 Jul, 14:05". Use for historical timestamps. */
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleString([], {
+  return new Date(iso).toLocaleString(LOCALE, { day: "2-digit", month: "short", ...TIME });
+}
+
+/** Date + time with the year, e.g. "22 Sep 2026, 14:05". For a scheduled pickup. */
+export function dateTimeFull(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString(LOCALE, {
     day: "2-digit",
     month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
+    year: "numeric",
+    ...TIME,
+  });
+}
+
+/** Weekday + date + time, e.g. "Tue 22 Sep, 14:05". For the customer tracking page. */
+export function dateTimeWithDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString(LOCALE, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    ...TIME,
+  });
+}
+
+/** Date only, e.g. "22 Sep 2026". */
+export function dateOnly(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(LOCALE, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: TZ,
   });
 }
 

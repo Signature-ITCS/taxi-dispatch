@@ -106,10 +106,15 @@ insert into public.app_settings (key, value) values
       'allow_scheduled', true,
       'min_advance_minutes', 30)),
   ('child_seat_price', jsonb_build_object('amount', 5)),
+  -- `booking_alert_emails` is deliberately absent, not an empty list. The code
+  -- reads an empty list as "tell nobody" -- a real choice an admin can make --
+  -- and only falls back to every active admin and dispatcher when the key is
+  -- missing entirely. Seeding [] would therefore start a new instance with
+  -- booking alerts silently switched off. Set the real addresses in
+  -- Admin -> Settings once the staff accounts exist.
   ('notifications', jsonb_build_object(
       'email_from', '',
-      'sms_sender', '',
-      'booking_alert_emails', jsonb_build_array())),
+      'sms_sender', '')),
   ('dispatch', jsonb_build_object(
       'auto_assign', false,
       'sound_alerts', true,

@@ -44,7 +44,7 @@ import BookingWidget from "@/components/booking/BookingWidget";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import ExternalBookingModal from "@/components/dashboard/ExternalBookingModal";
 import LoadError from "@/components/dashboard/LoadError";
-import { money, timeAgo, cn, normalizeWhatsapp, isValidPhone } from "@/lib/format";
+import { money, timeAgo, cn, normalizeWhatsapp, isValidPhone, dateTimeFull, dateTime } from "@/lib/format";
 import type { Booking, Driver } from "@/lib/types";
 
 interface JobRow extends Booking {
@@ -311,7 +311,7 @@ export default function DispatchPage() {
   const waLink = (whatsapp: string | null | undefined, job: JobRow) => {
     const digits = normalizeWhatsapp(whatsapp);
     const when = job.scheduled_at
-      ? "🕐 Scheduled: " + new Date(job.scheduled_at).toLocaleString()
+      ? "🕐 Scheduled: " + dateTimeFull(job.scheduled_at)
       : "⏱️ ASAP";
     const vias = (job.via_points ?? []).map((v) => v.address).filter(Boolean);
     const dist = job.distance_km ? `📏 ${job.distance_km} mi` + (job.duration_min ? ` · ~${job.duration_min} min` : "") + "\n" : "";
@@ -498,12 +498,7 @@ export default function DispatchPage() {
                   {j.scheduled_at && (
                     <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
                       <CalendarClock className="h-3.5 w-3.5" />
-                      {new Date(j.scheduled_at).toLocaleString([], {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {dateTime(j.scheduled_at)}
                     </div>
                   )}
                   <div className="space-y-1 text-sm">

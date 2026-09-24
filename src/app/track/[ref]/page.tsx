@@ -18,7 +18,7 @@ import {
   Repeat,
   ArrowLeft,
 } from "lucide-react";
-import { money, cn } from "@/lib/format";
+import { money, cn, dateTimeWithDay } from "@/lib/format";
 import InstallPWA from "@/components/InstallPWA";
 import type { BookingStatus, PaymentMethod } from "@/lib/types";
 
@@ -185,13 +185,7 @@ export default function TrackPage() {
             <span>
               Scheduled pickup:{" "}
               <b>
-                {new Date(ride.scheduled_at).toLocaleString([], {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {dateTimeWithDay(ride.scheduled_at)}
               </b>
             </span>
           </div>

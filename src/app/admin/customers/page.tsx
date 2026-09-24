@@ -20,7 +20,7 @@ import PageHeader from "@/components/admin/PageHeader";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import LoadError from "@/components/dashboard/LoadError";
 import SheetHandle from "@/components/dashboard/SheetHandle";
-import { cn, timeAgo, money, clock, dateTime } from "@/lib/format";
+import { cn, timeAgo, money, clock, dateTime, dateOnly } from "@/lib/format";
 import type { Customer, Booking } from "@/lib/types";
 
 export default function CustomersPage() {
@@ -204,7 +204,7 @@ function CustomerDetailModal({
           <Row
             icon={CalendarClock}
             label="Joined"
-            value={new Date(customer.created_at).toLocaleDateString()}
+            value={dateOnly(customer.created_at)}
           />
         </div>
 

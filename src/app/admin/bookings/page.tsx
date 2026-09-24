@@ -31,7 +31,7 @@ import LoadError from "@/components/dashboard/LoadError";
 import ExternalBookingModal from "@/components/dashboard/ExternalBookingModal";
 import StatusBadge from "@/components/dashboard/StatusBadge";
 import SheetHandle from "@/components/dashboard/SheetHandle";
-import { money, clock, cn } from "@/lib/format";
+import { money, clock, cn, dateTimeFull } from "@/lib/format";
 import { STATUS_META } from "@/lib/constants";
 import type { Booking, BookingStatus } from "@/lib/types";
 
@@ -430,7 +430,7 @@ function BookingDetailModal({
           <DetailRow
             icon={CalendarClock}
             label="When"
-            value={row.scheduled_at ? new Date(row.scheduled_at).toLocaleString() : "As soon as possible"}
+            value={row.scheduled_at ? dateTimeFull(row.scheduled_at) : "As soon as possible"}
           />
           {linked && (
             <DetailRow
